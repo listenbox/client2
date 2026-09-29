@@ -8,6 +8,8 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
+  client_youtubei:
+    path: ../youtubei
   listenbox_sync_engine:
     path: ../sync-engine
   window_manager: ^0.5.1

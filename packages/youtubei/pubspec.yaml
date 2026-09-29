@@ -12,3 +12,15 @@ dependencies:
   hooks: ^2.2.0
   code_assets: ^2.1.0
   crypto: ^3.0.6
+flutter:
+  plugin:
+    # The native-asset hook delivers pinned FJS binaries while Dart uses the
+    # unmodified upstream package; override only Flutter's native packaging.
+    implements: fjs
+    platforms:
+      macos:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true
