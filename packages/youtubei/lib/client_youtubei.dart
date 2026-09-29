@@ -9,12 +9,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show ExternalLibrary;
+import 'package:fjs/fjs.dart';
 
-import 'src/frb/api/engine.dart';
-import 'src/frb/api/error.dart';
-import 'src/frb/api/source.dart';
-import 'src/frb/api/value.dart';
-import 'src/frb/frb_generated.dart';
 import 'src/youtubejs_asset.dart';
 import 'src/youtubejs_host.dart';
 
