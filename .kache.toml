@@ -1,0 +1,6 @@
+[cache]
+# One OS-level store is shared across checkouts; do not put it in a build tree.
+# The hook's generated YouTube.js resource is a cdylib, so opt it into caching.
+cache_executables = true
+adaptive_incremental = false
+preserve_incremental = false

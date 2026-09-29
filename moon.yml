@@ -11,6 +11,8 @@ fileGroups:
     - pubspec.yaml
     - pubspec.lock
     - rust-toolchain.toml
+    - .cargo/config.toml
+    - .kache.toml
     - analysis_options.yaml
     - config/*.yaml
     - .gitmodules
@@ -24,6 +26,8 @@ fileGroups:
     - packages/**/hook/**/*
     - packages/**/native/**/*
     - packages/**/native*.json
+    - packages/youtubei/linux/CMakeLists.txt
+    - packages/youtubei/windows/CMakeLists.txt
     - packages/youtubei/youtubejs_tools.json
     - packages/**/moon.yml
     - packages/desktop/integration_test/**/*.dart

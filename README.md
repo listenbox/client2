@@ -15,8 +15,9 @@ only carries bundled JavaScript bytes.
 
 ## Get started
 
-Install Flutter **3.47.5** (Dart **3.13.4**), Rust **1.98.1**, and Moon
-**2.5.5**, then clone with submodules:
+Install Flutter **3.47.5** (Dart **3.13.4**), Rust **1.98.1**, Moon
+**2.5.5**, and the [prebuilt Kache **0.27.0** executable](https://github.com/kunobi-ninja/kache/releases/tag/v0.27.0)
+for your host, then clone with submodules:
 
 ```sh
 git clone --recurse-submodules https://github.com/listenbox/client2.git
@@ -48,4 +49,5 @@ session, press `r` to reload or `R` to restart. See
 Build hooks verify and bundle pinned SQLite, QuickJS, and FFmpeg libraries.
 The youtubei hook bundles pinned `vendor/youtubejs` source and compiles a small
 Rust resource containing its bytes. Normal builds need neither Node.js nor
-Aube, and never compile the larger native libraries from source.
+Aube, and never compile the larger native libraries from source. Kache caches
+the resource compilation in a shared OS-level store across checkouts.

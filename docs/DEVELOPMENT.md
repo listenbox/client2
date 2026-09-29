@@ -9,7 +9,10 @@ OpenAPI contract; change that contract and regenerate the client together.
 
 ## Set up
 
-Use Flutter 3.47.5 (which includes Dart 3.13.4), Rust 1.98.1, and Moon 2.5.5.
+Use Flutter 3.47.5 (which includes Dart 3.13.4), Rust 1.98.1, Moon 2.5.5,
+and the [prebuilt Kache 0.27.0 executable](https://github.com/kunobi-ninja/kache/releases/tag/v0.27.0)
+for your host. Keep `kache` on `PATH`; the hook invokes it directly around the
+pinned `rustc`, and the manual FJS publisher uses it as Cargo's rustc wrapper.
 Clone with submodules, then resolve the committed workspace lockfile:
 
 ```sh
@@ -44,6 +47,15 @@ YouTube.js source with a downloaded, checksum-verified esbuild binary and
 compile a small Rust resource containing its bytes. Normal builds need
 neither Node.js nor Aube, and never compile the larger native libraries from
 source.
+
+Kache stores compiled Rust artifacts in one OS-level cache shared by client2
+checkouts. The `.kache.toml` enables caching for the small YouTube.js resource
+library and disables incremental state; `.cargo/config.toml` applies the same
+wrapper to the rare FJS source release build. Keep each checkout's build output
+local to that checkout; do not share a `CARGO_TARGET_DIR`. On a cold machine,
+the build still needs the pinned Rust toolchain, Kache executable, and access
+to the verified source and native downloads. A cache hit is only an
+optimization. Normal Flutter or CLI builds never invoke Cargo for FJS.
 
 All five FJS targets are pinned by URL and SHA-256 in
 `packages/youtubei/native_artifacts.json`. The manual **Publish pinned QuickJS

@@ -98,6 +98,13 @@ Future<void> main(List<String> args) async {
       _ => throw UnsupportedError('No Rust resource target for $target'),
     };
     final clientRoot = Directory.fromUri(input.packageRoot.resolve('../../'));
+    final kacheConfig = File.fromUri(clientRoot.uri.resolve('.kache.toml'));
+    output.dependencies.add(kacheConfig.uri);
+    if (!await kacheConfig.exists()) {
+      throw StateError(
+        'The client Kache config is missing: ${kacheConfig.path}',
+      );
+    }
     final selectedRustc = await Process.run('rustup', [
       'which',
       'rustc',
@@ -163,15 +170,24 @@ Future<void> main(List<String> args) async {
       resource.path,
       resourceSource.path,
     ];
-    final compile = await Process.run(
-      rustc,
-      rustArgs,
-      workingDirectory: clientRoot.path,
-    );
+    late final ProcessResult compile;
+    try {
+      compile = await Process.run(
+        'kache',
+        [rustc, ...rustArgs],
+        workingDirectory: clientRoot.path,
+        environment: {'KACHE_CONFIG': kacheConfig.path},
+      );
+    } on ProcessException catch (error) {
+      throw StateError(
+        'Kache 0.27.0 is required to build the YouTube.js resource. '
+        'Install its prebuilt executable for this host: $error',
+      );
+    }
     if (compile.exitCode != 0) {
       throw ProcessException(
-        rustc,
-        rustArgs,
+        'kache',
+        [rustc, ...rustArgs],
         '${compile.stdout}\n${compile.stderr}',
         compile.exitCode,
       );
