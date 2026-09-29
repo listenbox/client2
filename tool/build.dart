@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
+import 'flutter.dart';
+
 final root = File.fromUri(Platform.script).parent.parent;
 final executableSuffix = Platform.isWindows ? '.exe' : '';
 
@@ -54,14 +56,15 @@ Future<void> main(List<String> arguments) async {
     final other => throw UnsupportedError('Desktop architecture $other'),
   };
   final directory = Directory('${root.path}/packages/desktop');
-  await run(Platform.isWindows ? 'flutter.bat' : 'flutter', [
+  final result = await runFlutter([
     'build',
     os,
     '--release',
     '--no-pub',
     if (os == 'windows') '--target-platform=windows-$architecture',
     if (os == 'linux') '--target-platform=linux-$architecture',
-  ], directory);
+  ], workingDirectory: directory.path);
+  if (result != 0) exit(result);
   final source = Directory(switch (os) {
     'macos' => '${directory.path}/build/macos/Build/Products/Release',
     'windows' => '${directory.path}/build/windows/$architecture/runner/Release',

@@ -41,11 +41,12 @@ fileGroups:
     - '!**/dist/**'
 tasks:
   install:
-    command: flutter pub get --enforce-lockfile
-    inputs: [pubspec.yaml, pubspec.lock, 'packages/**/pubspec.yaml']
+    command: dart tool/flutter.dart pub get --enforce-lockfile
+    inputs: [pubspec.yaml, pubspec.lock, 'packages/*/pubspec.yaml']
     options:
       cache: false
       internal: true
+      outputStyle: buffer-only-failure
   codegen:
     description: Use the committed API client; the parent workspace regenerates it with Oasmith.
     inputs: []

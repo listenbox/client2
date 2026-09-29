@@ -25,10 +25,11 @@ Visual Studio C++ desktop tools on Windows, or `clang`, `cmake`, `ninja-build`,
 it supplies `libasound.so.2` used by the Linux media library. A desktop session
 also needs a display server; headless UI tests use `xvfb`.
 
-On macOS, select the full Xcode installation under **Xcode Settings → Locations
-→ Command Line Tools**. A selection of `/Library/Developer/CommandLineTools`
-cannot build the Flutter desktop app. For a single command, use
-`env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer moon run desktop:dev`.
+Moon's desktop tasks use the selected Xcode or an explicit `DEVELOPER_DIR`.
+When macOS only selected Command Line Tools, they use the installed
+`/Applications/Xcode.app` for the Flutter process. For direct Flutter commands
+and IDE launches, select full Xcode under **Xcode Settings → Locations → Command
+Line Tools**, or set `DEVELOPER_DIR` to its `Contents/Developer` directory.
 
 On Windows ARM64, use a Flutter checkout at tag `3.47.5` and run its
 `bin/flutter.bat` once to bootstrap the native SDK. Check that `bin/dart.bat
@@ -76,7 +77,9 @@ assets need a full restart. In VS Code, select a desktop device and launch
 Saving a changed Dart file reloads it. That launch sets `LISTENBOX_CONFIG` to
 `config/dev.yaml` for the parent repository's local API and dashboard.
 
-Moon also starts an interactive Flutter session with that config:
+Moon also starts an interactive Flutter session with that config. It resolves
+the frozen dependencies once, shows dependency output only on failure, and
+leaves hot reload to Flutter:
 
 ```sh
 moon run desktop:dev

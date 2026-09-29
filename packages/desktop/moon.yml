@@ -10,9 +10,11 @@ tasks:
   dev:
     description: Start a standard Flutter session; r reloads, R restarts, and IDEs can attach.
     deps: [client:prerequisites]
-    command: flutter run
+    command: dart ../../tool/flutter.dart run
     args:
+      - --no-pub
       - --device-id=$os
+    inputs: []
     env:
       LISTENBOX_CONFIG: $projectRoot/../../config/dev.yaml
     preset: server
@@ -31,7 +33,7 @@ tasks:
     # Native release and test builds share one Flutter/Xcode/CMake project.
     # Finish release compilation before starting the native test build.
     deps: ['~:build']
-    command: flutter test
+    command: dart ../../tool/flutter.dart test
     args:
       - --no-pub
       - --device-id=$os
