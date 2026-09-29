@@ -102,6 +102,7 @@ jobs:
           repository = os.environ['GITHUB_REPOSITORY']
           output = Path('release-assets')
           output.mkdir()
+          shutil.copyfile('packages/youtubei/FJS-LICENSE.txt', output / 'FJS-LICENSE.txt')
           manifest = json.loads(Path('packages/youtubei/native_artifacts.json').read_text())
           upstream = manifest.pop('sourceRelease')
           manifest['sourceReleases'] = {'macos': upstream, 'linux-windows': tag}
@@ -151,7 +152,8 @@ jobs:
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --draft --prerelease --latest=false --title "FJS 3.3.0 pinned native assets" \
             --notes-file release-assets/release-notes.md \
-            release-assets/*.so release-assets/*.dll release-assets/native_artifacts.json
+            release-assets/*.so release-assets/*.dll release-assets/FJS-LICENSE.txt \
+            release-assets/native_artifacts.json
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
       - name: Upload candidate native artifact manifest
         uses: actions/upload-artifact@v7
