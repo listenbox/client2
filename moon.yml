@@ -30,7 +30,7 @@ fileGroups:
     - packages/youtubei/windows/CMakeLists.txt
     - packages/youtubei/youtubejs_tools.json
     - packages/**/moon.yml
-    - packages/desktop/integration_test/**/*.dart
+    - packages/desktop/test/**/*.dart
     - packages/desktop/macos/**/*
     - packages/desktop/windows/**/*
     - packages/desktop/linux/**/*
