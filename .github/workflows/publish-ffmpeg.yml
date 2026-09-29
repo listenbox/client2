@@ -33,14 +33,14 @@ jobs:
         if: matrix.target == 'linux-x64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libasound2-dev zip
+          sudo apt-get install -y clang cmake ninja-build pkg-config libasound2-dev zip xz-utils
       - uses: msys2/setup-msys2@v2
         if: matrix.target == 'windows-x64'
         with:
           msystem: CLANG64
           update: true
           install: >-
-            git curl make tar zip python
+            git curl make tar zip python diffutils
             mingw-w64-clang-x86_64-toolchain
             mingw-w64-clang-x86_64-cmake
             mingw-w64-clang-x86_64-ninja
@@ -51,7 +51,7 @@ jobs:
           msystem: CLANGARM64
           update: true
           install: >-
-            git curl make tar zip python
+            git curl make tar zip python diffutils
             mingw-w64-clang-aarch64-toolchain
             mingw-w64-clang-aarch64-cmake
             mingw-w64-clang-aarch64-ninja

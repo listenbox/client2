@@ -34,6 +34,7 @@ git clone --quiet https://github.com/akashskypatel/ffmpeg-kit-builders.git "$wor
 git -C "$work_root/builders" checkout --quiet --detach "$builders_commit"
 [[ "$(git -C "$work_root/builders" rev-parse HEAD)" == "$builders_commit" ]]
 python3 "$script_dir/patch_ffmpegkit_signals.py" "$work_root/builders/FFmpegKit"
+python3 "$script_dir/patch_ffmpegkit_publisher.py" windows-arm64 "$work_root/builders/FFmpegKit"
 
 curl --fail --location --retry 3 \
   "https://ffmpeg.org/releases/ffmpeg-${ffmpeg_version}.tar.xz" \

@@ -61,6 +61,9 @@ git clone --quiet https://github.com/akashskypatel/ffmpeg-kit-builders.git "$wor
 git -C "$work_root/builders" checkout --quiet --detach "$builders_commit"
 [[ "$(git -C "$work_root/builders" rev-parse HEAD)" == "$builders_commit" ]]
 python3 "$script_dir/patch_ffmpegkit_signals.py" "$work_root/builders/FFmpegKit"
+if [[ "$target" == linux-x64 || "$target" == windows-x64 ]]; then
+  python3 "$script_dir/patch_ffmpegkit_publisher.py" "$target" "$work_root/builders/FFmpegKit"
+fi
 
 # The pinned upstream build uses jsoncpp 1.9.6 and SDL2 2.32.8. Build static
 # copies so the published FFmpegKit library has no Homebrew/MSYS2 runtime
@@ -165,7 +168,14 @@ PY
 fi
 export PKG_CONFIG_PATH="$ffmpeg_prefix/lib/pkgconfig:$dependency_prefix/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 for module in jsoncpp sdl2; do
-  [[ "$(pkg-config --variable=libdir "$module")" == "$dependency_prefix/lib" ]] || {
+  selected_libdir="$(pkg-config --variable=libdir "$module")"
+  expected_libdir="$dependency_prefix/lib"
+  if [[ "$target" == windows-x64 ]]; then
+    # MSYS2 pkg-config returns drive-letter paths while Bash uses /d/... .
+    selected_libdir="$(cygpath -m "$selected_libdir")"
+    expected_libdir="$(cygpath -m "$expected_libdir")"
+  fi
+  [[ "$selected_libdir" == "$expected_libdir" ]] || {
     echo "Pinned static $module was not selected by pkg-config." >&2; exit 1;
   }
 done
