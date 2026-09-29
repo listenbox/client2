@@ -179,16 +179,14 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
 
   Future<void> _installTray() async {
     try {
-      final asset = Platform.isWindows ? 'assets/tray.ico' : 'assets/tray.png';
-      final bytes = await rootBundle.load(asset);
-      final extension = Platform.isWindows ? 'ico' : 'png';
-      final file = File(
-        '${Directory.systemTemp.path}/listenbox-tray-$pid.$extension',
-      );
-      await file.writeAsBytes(
-        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      );
-      await trayManager.setIcon(file.path, isTemplate: Platform.isMacOS);
+      // Match the Rust client's tray.svg renders; the Windows ICO embeds its
+      // tray-windows.png bytes for Win32 LoadImage.
+      final asset = Platform.isMacOS
+          ? 'assets/tray-macos.png'
+          : Platform.isWindows
+          ? 'assets/tray-windows.ico'
+          : 'assets/tray.png';
+      await trayManager.setIcon(asset, isTemplate: Platform.isMacOS);
       await trayManager.setToolTip('Listenbox — YouTube to podcast sync');
       await trayManager.setContextMenu(
         Menu(

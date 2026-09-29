@@ -22,4 +22,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/tray.png
-    - assets/tray.ico
+    - assets/tray-macos.png
+    - assets/tray-windows.ico
