@@ -7,17 +7,33 @@ if [[ "${MSYSTEM:-}" != CLANGARM64 ]]; then
   echo 'This recipe requires native MSYS2 CLANGARM64.' >&2
   exit 1
 fi
+if [[ "$(clang -dumpmachine)" != aarch64-*-windows-gnu ]] ||
+   [[ "$(clang++ -dumpmachine)" != aarch64-*-windows-gnu ]]; then
+  echo 'The CLANGARM64 compilers must target the ARM64 Windows GNU ABI.' >&2
+  exit 1
+fi
 
 builders_commit=4dc903c2a29741b8f9b61dd94b10185bae69a493
 ffmpeg_version=9.0.1
 ffmpeg_sha256=cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 work_root="${1:-$PWD/.ffmpegkit-arm64-build}"
 mkdir -p "$work_root"
 work_root="$(cd "$work_root" && pwd)"
+if ! command -v gsed >/dev/null 2>&1; then
+  sed --version | grep -q 'GNU sed' || {
+    echo 'FFmpegKit publication requires GNU sed.' >&2
+    exit 1
+  }
+  mkdir -p "$work_root/host-tools"
+  ln -s "$(command -v sed)" "$work_root/host-tools/gsed"
+  export PATH="$work_root/host-tools:$PATH"
+fi
 
 git clone --quiet https://github.com/akashskypatel/ffmpeg-kit-builders.git "$work_root/builders"
 git -C "$work_root/builders" checkout --quiet --detach "$builders_commit"
 [[ "$(git -C "$work_root/builders" rev-parse HEAD)" == "$builders_commit" ]]
+python3 "$script_dir/patch_ffmpegkit_signals.py" "$work_root/builders/FFmpegKit"
 
 curl --fail --location --retry 3 \
   "https://ffmpeg.org/releases/ffmpeg-${ffmpeg_version}.tar.xz" \
@@ -56,6 +72,18 @@ import sys
 
 path = Path(sys.argv[1])
 source = path.read_text()
+guard = '''# Enforce MinGW when building for Windows
+if(WIN32 AND NOT MINGW)
+    message(FATAL_ERROR "Windows builds require MinGW. Use MinGW-w64 toolchain for cross-compilation. MSVC is currently not supported.")
+endif()
+'''
+project = 'project(ffmpeg-kit VERSION 8.0 LANGUAGES C CXX)'
+if source.count(guard) != 1 or source.count(project) != 1:
+    raise SystemExit('Pinned FFmpegKit CMake platform guard changed')
+# CMake only determines MINGW after project() has identified the compiler.
+# Keep the upstream MSVC rejection, but evaluate it after compiler detection.
+source = source.replace(guard, '')
+source = source.replace(project, project + '\n\n' + guard)
 replacements = {
     '"-static-libgcc"': '',
     '"-static-libstdc++"': '',
@@ -80,6 +108,9 @@ cmake -S "$work_root/builders/FFmpegKit" -B "$work_root/ffmpegkit-build" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
   -DFFMPEG_BUILD_DIR="$ffmpeg_prefix" \
+  -DFFMPEG_SRC_DIR="$ffmpeg_source" \
+  -DCMAKE_C_FLAGS="-iquote$ffmpeg_source" \
+  -DCMAKE_CXX_FLAGS="-iquote$ffmpeg_source" \
   -DDEPENDENCY_BUILD_DIR="$MSYSTEM_PREFIX" \
   -DFFMPEG_KIT_BUNDLE_TYPE=base \
   -DFFMPEG_KIT_VERSION=0.11.1 \
@@ -89,8 +120,8 @@ cmake --build "$work_root/ffmpegkit-build" --parallel 4
 dll="$work_root/ffmpegkit-build/libffmpegkit.dll"
 [[ -s "$dll" ]]
 file "$dll" | grep -Eiq 'PE32.*(Aarch64|ARM64)'
-objdump -p "$dll" | grep -q 'ffmpeg_kit_create_session_from_argv'
-objdump -p "$dll" | grep -q 'ffprobe_kit_create_session_from_argv'
+objdump -p "$dll" | grep 'ffmpeg_kit_create_session_from_argv' >/dev/null
+objdump -p "$dll" | grep 'ffprobe_kit_create_session_from_argv' >/dev/null
 
 bundle="$work_root/bundle-base-windows-arm64-shared-small-lgpl"
 mkdir -p "$bundle/bin" "$bundle/licenses"
@@ -101,6 +132,7 @@ cp "$ffmpeg_source/COPYING.LGPLv2.1" "$bundle/licenses/ffmpeg_license.txt"
 # toolchain, including its libc++ runtime if the linker retained it dynamic.
 declare -A scanned=()
 queue=("$bundle/bin/libffmpegkit.dll")
+windows_system_dir="$(cygpath -u "${WINDIR:?}")/System32"
 while ((${#queue[@]})); do
   current="${queue[0]}"
   queue=("${queue[@]:1}")
@@ -114,6 +146,11 @@ while ((${#queue[@]})); do
         cp "$source_dll" "$target_dll"
         queue+=("$target_dll")
       fi
+    elif [[ "${name,,}" == api-ms-win-* || "${name,,}" == ext-ms-win-* || -f "$windows_system_dir/$name" ]]; then
+      : # Windows API set or OS-owned DLL.
+    else
+      echo "Unresolved non-system DLL import in $current: $name" >&2
+      exit 1
     fi
   done < <(objdump -p "$current" | sed -n 's/^[[:space:]]*DLL Name: //p')
 done

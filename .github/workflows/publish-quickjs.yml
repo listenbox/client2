@@ -10,6 +10,8 @@ jobs:
   build:
     name: FJS ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    env:
+      RUSTUP_TOOLCHAIN: 1.98.1-${{ matrix.rust_host }}
     strategy:
       fail-fast: false
       matrix:
@@ -104,8 +106,7 @@ jobs:
           output.mkdir()
           shutil.copyfile('packages/youtubei/FJS-LICENSE.txt', output / 'FJS-LICENSE.txt')
           manifest = json.loads(Path('packages/youtubei/native_artifacts.json').read_text())
-          upstream = manifest.pop('sourceRelease')
-          manifest['sourceReleases'] = {'macos': upstream, 'linux-windows': tag}
+          manifest['sourceReleases']['linux-windows'] = tag
           manifest['sourceSha256'] = os.environ['SOURCE_SHA256']
           notes = [
               'Pinned FJS 3.3.0 native libraries for Listenbox client2.',

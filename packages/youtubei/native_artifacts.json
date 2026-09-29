@@ -1,6 +1,5 @@
 {
   "source": "fjs 3.3.0 (pub.dev archive), flutter_rust_bridge 2.12.0",
-  "sourceRelease": "precompiled_87504b7e670bb107f8e92403966bd43e6a7df975e3b94b46e623518a315c80d2",
   "targets": {
     "macos-arm64": {
       "url": "https://github.com/fluttercandies/fjs/releases/download/precompiled_87504b7e670bb107f8e92403966bd43e6a7df975e3b94b46e623518a315c80d2/aarch64-apple-darwin_libfjs.dylib",
@@ -12,8 +11,25 @@
       "sha256": "1f3466eda0375bb094490c1a2434fd90387a6ab984dc88a3d398ab7f9fb4c9ef",
       "filename": "libfjs.dylib"
     },
-    "linux-x64": null,
-    "windows-x64": null,
-    "windows-arm64": null
-  }
+    "linux-x64": {
+      "url": "https://github.com/listenbox/client2/releases/download/fjs-3.3.0-6ebbf566486f/fjs-3.3.0-linux-x64.so",
+      "sha256": "f8bbd13dbeac08d276784f72ade93792f60f9098064ad11e34f907a693e2d62c",
+      "filename": "libfjs.so"
+    },
+    "windows-x64": {
+      "url": "https://github.com/listenbox/client2/releases/download/fjs-3.3.0-6ebbf566486f/fjs-3.3.0-windows-x64.dll",
+      "sha256": "fb92c756ba31286fcc40703f3383e7f4b6373b45ef5f8b05444fd5bbcf12d450",
+      "filename": "fjs.dll"
+    },
+    "windows-arm64": {
+      "url": "https://github.com/listenbox/client2/releases/download/fjs-3.3.0-6ebbf566486f/fjs-3.3.0-windows-arm64.dll",
+      "sha256": "8dc4fb4c23796c3514a36194260d895e6dd6f55760fef94a17b4ca77fd782e26",
+      "filename": "fjs.dll"
+    }
+  },
+  "sourceReleases": {
+    "macos": "precompiled_87504b7e670bb107f8e92403966bd43e6a7df975e3b94b46e623518a315c80d2",
+    "linux-windows": "fjs-3.3.0-6ebbf566486f"
+  },
+  "sourceSha256": "cd1a9e36dac80966bafcc222461b7ab314eda2160567429c9ac6c4d3120d93bc"
 }

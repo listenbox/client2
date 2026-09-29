@@ -1,23 +1,52 @@
-name: Publish native Windows ARM64 FFmpegKit
+name: Publish patched FFmpegKit artifacts
 
 on:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish the verified archive to a GitHub release
-        required: true
-        type: boolean
-        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  windows-arm64:
-    runs-on: windows-11-arm
+  build:
+    name: FFmpegKit ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: macos-x64
+            runner: macos-15-intel
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: windows-x64
+            runner: windows-2025
+          - target: windows-arm64
+            runner: windows-11-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: Install macOS native build tools
+        if: startsWith(matrix.target, 'macos-')
+        run: brew install bash gnu-sed cmake ninja pkg-config
+      - name: Install Linux native build tools
+        if: matrix.target == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libasound2-dev zip
       - uses: msys2/setup-msys2@v2
+        if: matrix.target == 'windows-x64'
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            git curl make tar zip python
+            mingw-w64-clang-x86_64-toolchain
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkgconf
+      - uses: msys2/setup-msys2@v2
+        if: matrix.target == 'windows-arm64'
         with:
           msystem: CLANGARM64
           update: true
@@ -29,22 +58,128 @@ jobs:
             mingw-w64-clang-aarch64-pkgconf
             mingw-w64-clang-aarch64-SDL2
             mingw-w64-clang-aarch64-jsoncpp
-      - name: Build native FFmpegKit artifact
+      # Deliberate source builds happen only here. Normal client CI downloads
+      # the resulting SHA-256-pinned archives.
+      - name: Build patched macOS or Linux library
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          bash packages/sync-engine/tool/build_ffmpegkit_native.sh \
+            '${{ matrix.target }}' "$PWD/native-out/${{ matrix.target }}"
+      - name: Build patched Windows x64 library
+        if: matrix.target == 'windows-x64'
         shell: msys2 {0}
         run: |
-          bash packages/sync-engine/tool/build_ffmpegkit_windows_arm64.sh "$PWD/.ffmpegkit-arm64-build"
-      - name: Preserve build result and digest
-        uses: actions/upload-artifact@v4
+          bash packages/sync-engine/tool/build_ffmpegkit_native.sh \
+            windows-x64 "$PWD/native-out/windows-x64"
+      - name: Build patched Windows ARM64 library
+        if: matrix.target == 'windows-arm64'
+        shell: msys2 {0}
+        run: |
+          bash packages/sync-engine/tool/build_ffmpegkit_windows_arm64.sh \
+            "$PWD/native-out/windows-arm64"
+      - name: Upload pinned native archive
+        uses: actions/upload-artifact@v7
         with:
-          name: ffmpegkit-windows-arm64
-          path: |
-            ${{ github.workspace }}/.ffmpegkit-arm64-build/bundle-base-windows-arm64-shared-small-lgpl.zip
+          name: ffmpegkit-${{ matrix.target }}
+          path: native-out/${{ matrix.target }}/bundle-base-*.zip
           if-no-files-found: error
-      - name: Publish verified native bundle
-        if: ${{ inputs.publish }}
-        shell: pwsh
+
+  publish:
+    name: Publish immutable patched release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ffmpegkit-*
+          path: native-archives
+      - name: Verify archives and write candidate artifact pins
+        id: prepare
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          from zipfile import ZipFile
+
+          tag = f'ffmpegkit-0.11.1-signal-safe-{os.environ["GITHUB_SHA"][:12]}'
+          repository = os.environ['GITHUB_REPOSITORY']
+          output = Path('release-assets')
+          output.mkdir()
+          expected = {
+              'macos-arm64': ('bundle-base-macos-arm64-shared-small-lgpl.zip', 'lib/libffmpegkit.dylib'),
+              'macos-x64': ('bundle-base-macos-x64-shared-small-lgpl.zip', 'lib/libffmpegkit.dylib'),
+              'linux-x64': ('bundle-base-linux-x64-shared-small-lgpl.zip', 'lib/libffmpegkit.so'),
+              'windows-x64': ('bundle-base-windows-x64-shared-small-lgpl.zip', 'bin/libffmpegkit.dll'),
+              'windows-arm64': ('bundle-base-windows-arm64-shared-small-lgpl.zip', 'bin/libffmpegkit.dll'),
+          }
+          pins = {
+              'ffmpegKitVersion': '0.11.1',
+              'ffmpegVersion': '9.0.1',
+              'buildersCommit': '4dc903c2a29741b8f9b61dd94b10185bae69a493',
+              'ffmpegSourceSha256': 'cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635',
+              'signalPatch': 'packages/sync-engine/tool/patch_ffmpegkit_signals.py',
+              'targets': {},
+          }
+          notes = [
+              'Pinned FFmpegKit Extended 0.11.1 / FFmpeg 9.0.1 native libraries.',
+              'The pinned source patch leaves process signal handling with Dart; FFmpegKit sessions still support explicit cancellation.',
+              '',
+          ]
+          for target, (asset_name, relative_binary) in expected.items():
+              source = Path('native-archives') / f'ffmpegkit-{target}' / asset_name
+              destination = output / asset_name
+              shutil.copyfile(source, destination)
+              root = asset_name.removesuffix('.zip')
+              entry = f'{root}/{relative_binary}'
+              with ZipFile(destination) as archive:
+                  names = set(archive.namelist())
+                  required = {
+                      entry,
+                      f'{root}/licenses/ffmpeg-kit_license.txt',
+                      f'{root}/licenses/ffmpeg_license.txt',
+                  }
+                  if not required <= names:
+                      raise SystemExit(f'{target} archive lacks required entries: {required - names}')
+              digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+              pins['targets'][target] = {
+                  'url': f'https://github.com/{repository}/releases/download/{tag}/{asset_name}',
+                  'sha256': digest,
+                  'entry': entry,
+              }
+              notes.append(f'- `{target}`: `{asset_name}` SHA-256 `{digest}`')
+          (output / 'ffmpeg_artifacts_candidate.json').write_text(json.dumps(pins, indent=2) + '\n')
+          (output / 'release-notes.md').write_text('\n'.join(notes) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as github_output:
+              github_output.write(f'tag={tag}\n')
+          PY
+      - name: Publish pinned release once
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
         run: |
-          $archive = Join-Path $env:GITHUB_WORKSPACE '.ffmpegkit-arm64-build/bundle-base-windows-arm64-shared-small-lgpl.zip'
-          gh release create ffmpegkit-9.0.1-windows-arm64-v1 $archive --title 'FFmpegKit 9.0.1 Windows ARM64' --notes 'Native CLANGARM64 LGPL build from pinned FFmpeg 9.0.1 and FFmpegKit Extended source. See source build recipe in this repository.'
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $RELEASE_TAG already exists; refusing to replace its assets."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists; refusing to reuse it."
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --prerelease --latest=false --title 'FFmpegKit 0.11.1 signal-safe native assets' \
+            --notes-file release-assets/release-notes.md \
+            release-assets/*.zip release-assets/ffmpeg_artifacts_candidate.json
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Upload candidate native artifact pins
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffmpegkit-native-artifacts-candidate
+          path: release-assets/ffmpeg_artifacts_candidate.json
+          if-no-files-found: error
