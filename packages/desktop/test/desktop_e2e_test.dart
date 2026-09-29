@@ -5,13 +5,15 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
+import 'package:listenbox_desktop/desktop_host.dart';
 import 'package:listenbox_desktop/main.dart';
 import 'package:listenbox_sync_engine/sync_engine.dart';
+import 'package:tray_manager/tray_manager.dart';
+import 'package:window_manager/window_manager.dart';
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  testWidgets('native workspace uses its real client and isolated profile', (
+  _LoopbackTestBinding();
+  testWidgets('workspace uses its real client and isolated profile', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 900);
@@ -19,10 +21,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final service = (await tester.runAsync(_DesktopFixture.start))!;
+    final host = _HeadlessDesktopHost();
     final key = GlobalKey<DesktopWorkspaceState>();
     try {
       await tester.pumpWidget(
-        ListenboxDesktop(key: key, client: service.client),
+        ListenboxDesktop(key: key, client: service.client, host: host),
       );
       final state = key.currentState!;
       expect(state.initialLoad, isNotNull);
@@ -53,6 +56,34 @@ void main() {
           'GET /s/shows/${service.firstSlug}/episodes',
         ]),
       );
+
+      expect(host.menu?.items?.map((item) => item.label), [
+        'Open Listenbox',
+        'Quit Listenbox',
+      ]);
+      state.onWindowClose();
+      expect(state.windowHiddenSettled, isNotNull);
+      await state.windowHiddenSettled!;
+      expect(host.hidden, isTrue);
+      expect(state.mounted, isTrue);
+      expect(identical(state.client, service.client), isTrue);
+      final catalogRequestsBefore = service.requests
+          .where((request) => request == 'GET /s/shows')
+          .length;
+      await tester.runAsync(state.reload);
+      expect(
+        service.requests.where((request) => request == 'GET /s/shows').length,
+        greaterThan(catalogRequestsBefore),
+      );
+      state.onTrayIconMouseDown();
+      expect(host.popups, 1);
+      state.onTrayIconRightMouseDown();
+      expect(host.popups, 2);
+      state.onTrayMenuItemClick(host.menu!.getMenuItem('show')!);
+      expect(state.windowOpenSettled, isNotNull);
+      await state.windowOpenSettled!;
+      expect(host.hidden, isFalse);
+      expect(host.opens, 1);
 
       await tester.tap(find.byKey(const Key('team-picker')));
       await tester.pump();
@@ -107,10 +138,108 @@ void main() {
       await tester.runAsync(service.close);
     }
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('Windows tray routes clicks and Quit closes the client', (
+    tester,
+  ) async {
+    final service = (await tester.runAsync(_DesktopFixture.start))!;
+    final host = _HeadlessDesktopHost(DesktopPlatform.windows);
+    final key = GlobalKey<DesktopWorkspaceState>();
+    try {
+      await tester.pumpWidget(
+        ListenboxDesktop(key: key, client: service.client, host: host),
+      );
+      final state = key.currentState!;
+      expect(state.initialLoad, isNotNull);
+      await tester.runAsync(() => state.initialLoad!);
+      state.onTrayIconMouseDown();
+      expect(state.windowOpenSettled, isNotNull);
+      await state.windowOpenSettled!;
+      expect(host.opens, 1);
+      state.onTrayIconRightMouseDown();
+      expect(host.popups, 1);
+      expect(host.menu?.getMenuItem('quit'), isNotNull);
+      state.onTrayMenuItemClick(host.menu!.getMenuItem('quit')!);
+      await tester.runAsync(() => host.exited.future);
+      expect(host.trayDestroyed, isTrue);
+      expect(host.exitCode, 0);
+      expect(state.stopping, isTrue);
+      final requestsBefore = service.requests.length;
+      await expectLater(service.client.catalog(), throwsA(isA<StateError>()));
+      expect(service.requests.length, requestsBefore);
+      expect(service.unexpected, isEmpty);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(service.close);
+    }
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }
 
-/// Only HTTP is a fixture: widgets use the production Client, generated API,
-/// profile files, and cancellation/shutdown paths.
+class _LoopbackTestBinding extends LiveTestWidgetsFlutterBinding {
+  // The fixture owns every URL used by this scenario, including artwork.
+  @override
+  bool get overrideHttpClient => false;
+}
+
+class _HeadlessDesktopHost implements DesktopHost {
+  _HeadlessDesktopHost([this.platform = DesktopPlatform.macOS]);
+
+  @override
+  final DesktopPlatform platform;
+
+  Menu? menu;
+  bool hidden = false;
+  bool trayDestroyed = false;
+  int popups = 0;
+  int opens = 0;
+  int? exitCode;
+  final exited = Completer<void>();
+
+  @override
+  void attach(
+    WindowListener windowListener,
+    TrayListener trayListener,
+    Future<void> Function() requestQuit,
+  ) {}
+
+  @override
+  void detach(WindowListener windowListener, TrayListener trayListener) {}
+
+  @override
+  Future<void> installTray(Menu menu) async {
+    this.menu = menu;
+  }
+
+  @override
+  Future<void> hideWindow() async {
+    hidden = true;
+  }
+
+  @override
+  Future<void> openWindow() async {
+    opens++;
+    hidden = false;
+  }
+
+  @override
+  Future<void> popUpTrayMenu() async {
+    popups++;
+  }
+
+  @override
+  Future<void> destroyTray() async {
+    trayDestroyed = true;
+  }
+
+  @override
+  void exitProcess(int code) {
+    exitCode = code;
+    exited.complete();
+  }
+}
+
+/// HTTP and OS window/tray calls are substituted: widgets use the production
+/// Client, generated API, profile files, and cancellation/shutdown paths.
 class _DesktopFixture {
   _DesktopFixture(
     this.profile,

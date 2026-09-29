@@ -117,11 +117,11 @@ jobs:
           cache-executables: true
           github-cache: false
           pr-comment: false
-      - name: Install Linux desktop, tray, audio, and display libraries
+      - name: Install Linux desktop, tray, and audio libraries
         if: matrix.target == 'linux-x64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev libasound2t64 libayatana-appindicator3-dev xvfb
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev libasound2t64 libayatana-appindicator3-dev
       - name: Resolve frozen Dart workspace
         run: flutter pub get --enforce-lockfile
       - name: Analyze and format check
@@ -134,12 +134,8 @@ jobs:
         run: ./packages/cli/dist/release/bundle/bin/${{ matrix.cli }} --help
       - name: Build desktop release bundle
         run: moon run desktop:build
-      - name: Run desktop integration test
-        if: matrix.target != 'linux-x64'
+      - name: Run headless desktop integration test
         run: moon run desktop:test-e2e
-      - name: Run Linux desktop integration test under Xvfb
-        if: matrix.target == 'linux-x64'
-        run: xvfb-run --auto-servernum moon run desktop:test-e2e
       # Actions artifacts do not preserve Unix executable bits or app-bundle
       # symlinks; archive each complete bundle before uploading it.
       - name: Archive Unix bundles

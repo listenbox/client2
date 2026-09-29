@@ -66,8 +66,8 @@ the compiled Dart CLI. API E2E does not build or launch the desktop. Preserve re
 processing and real embedded YouTube.js against test-local provider responses.
 Retain assertions on protocol outcomes, durable API/SQLite state, range requests,
 owned media outputs, absence of duplicate publication, and actual process closure.
-Desktop control scenarios live in the desktop package and run Flutter with the
-shared Dart client against local HTTP fixtures. Tests establish their intended states through explicit gates,
+Desktop control scenarios live in the desktop package and run Flutter headlessly
+with the shared Dart client against local HTTP fixtures. Tests establish their intended states through explicit gates,
 finish below ten seconds, and retain the hard thirty-second failure guard.
 
 Verification targets: client package analysis, cli:build, desktop:build,

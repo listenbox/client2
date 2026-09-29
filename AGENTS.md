@@ -25,7 +25,8 @@
 - Preserve resumable work and acknowledgement-loss safety. Cancellation must
   settle owned work before logout or exit; UI progress is never durable truth.
 - Use the parent repository's integrated API E2E suites for the real Dart CLI.
-  Keep native Flutter UI coverage in `packages/desktop/integration_test`; the
-  API E2E suite must not launch or build the desktop app.
+  Keep integrated Flutter UI coverage headless in `packages/desktop/test` with
+  the real shared client and local HTTP fixtures. Tests must not open or focus
+  a native window. The API E2E suite must not launch or build the desktop app.
 - Desktop development uses Flutter's ordinary run/hot-reload session.
 - Do not add unit tests or compatibility paths for the superseded Rust client.

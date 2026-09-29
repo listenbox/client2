@@ -16,7 +16,9 @@ configuration for reload on save. The shared client and admitted work survive
 hot reload.
 
 From the client repository root, `moon run desktop:build` creates the release
-bundle and `moon run desktop:test-e2e` runs the native Flutter integration suite.
+bundle and `moon run desktop:test-e2e` runs the headless integrated Flutter
+suite with a real shared client and local HTTP fixture. It does not open a
+desktop window.
 
 See [the development guide](../../docs/DEVELOPMENT.md) for toolchain and native
 asset details.

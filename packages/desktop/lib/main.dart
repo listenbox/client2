@@ -8,6 +8,8 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'desktop_host.dart';
+
 /// The client belongs to the running app, so a Flutter hot reload rebuilds the
 /// interface without reopening SQLite or cancelling admitted transfers.
 Future<void> main(List<String> args) => launchDesktop(args);
@@ -59,8 +61,13 @@ Future<void> launchDesktop(List<String> args) async {
 }
 
 class ListenboxDesktop extends StatefulWidget {
-  const ListenboxDesktop({super.key, required this.client});
+  const ListenboxDesktop({
+    super.key,
+    required this.client,
+    this.host = const NativeDesktopHost(),
+  });
   final Client client;
+  final DesktopHost host;
   @override
   State<ListenboxDesktop> createState() => DesktopWorkspaceState();
 }
@@ -131,9 +138,12 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
   Completer<void>? cookiesSettled;
   Completer<void>? importSettled;
   Completer<void>? logoutSettled;
+  Future<void>? windowHiddenSettled;
+  Future<void>? windowOpenSettled;
   Future<void> Function(String)? browserOpener;
 
   Client get client => widget.client;
+  DesktopHost get host => widget.host;
   bool get loaded => catalog != null;
   List<Map<String, dynamic>> get shows =>
       catalog?.shows.where(_isImport).toList() ?? const [];
@@ -161,14 +171,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
   @override
   void initState() {
     super.initState();
-    if (Platform.isMacOS) {
-      const MethodChannel('listenbox/native')
-          .setMethodCallHandler((call) async {
-            if (call.method == 'quitRequested') await quit();
-          });
-    }
-    windowManager.addListener(this);
-    trayManager.addListener(this);
+    host.attach(this, this, quit);
     progress = client.downloads.snapshot();
     _downloadSubscription = client.downloads.changes.listen((value) {
       if (mounted) setState(() => progress = value);
@@ -179,20 +182,10 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
 
   Future<void> _installTray() async {
     try {
-      // Match the Rust client's tray.svg renders; the Windows ICO embeds its
-      // tray-windows.png bytes for Win32 LoadImage.
-      final asset = Platform.isMacOS
-          ? 'assets/tray-macos.png'
-          : Platform.isWindows
-          ? 'assets/tray-windows.ico'
-          : 'assets/tray.png';
-      await trayManager.setIcon(asset, isTemplate: Platform.isMacOS);
-      await trayManager.setToolTip('Listenbox — YouTube to podcast sync');
-      await trayManager.setContextMenu(
+      await host.installTray(
         Menu(
           items: [
             MenuItem(key: 'show', label: 'Open Listenbox'),
-            MenuItem.separator(),
             MenuItem(key: 'quit', label: 'Quit Listenbox'),
           ],
         ),
@@ -206,17 +199,37 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
 
   @override
   void onWindowClose() {
-    unawaited(windowManager.hide());
+    windowHiddenSettled = host.hideWindow();
   }
 
   @override
   void onTrayIconMouseDown() {
-    unawaited(windowManager.show().then((_) => windowManager.focus()));
+    if (host.platform == DesktopPlatform.macOS) {
+      unawaited(host.popUpTrayMenu());
+    } else if (host.platform == DesktopPlatform.windows) {
+      _requestOpenWindow();
+    }
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    if (host.platform == DesktopPlatform.macOS ||
+        host.platform == DesktopPlatform.windows) {
+      unawaited(host.popUpTrayMenu());
+    }
+  }
+
+  void _requestOpenWindow() {
+    windowOpenSettled = _openWindow();
+  }
+
+  Future<void> _openWindow() async {
+    await host.openWindow();
   }
 
   @override
   void onTrayMenuItemClick(MenuItem item) {
-    if (item.key == 'show') onTrayIconMouseDown();
+    if (item.key == 'show') _requestOpenWindow();
     if (item.key == 'quit') unawaited(quit());
   }
 
@@ -232,8 +245,8 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     }
     try {
       await client.close();
-      if (_trayInstalled) await trayManager.destroy();
-      exit(0);
+      if (_trayInstalled) await host.destroyTray();
+      host.exitProcess(0);
     } catch (error) {
       stderr.writeln('Could not finish shutdown: $error');
       exitCode = 1;
@@ -632,11 +645,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
 
   @override
   void dispose() {
-    if (Platform.isMacOS) {
-      const MethodChannel('listenbox/native').setMethodCallHandler(null);
-    }
-    windowManager.removeListener(this);
-    trayManager.removeListener(this);
+    host.detach(this, this);
     _life.cancel();
     _episodeCancel?.cancel();
     _downloadSubscription?.cancel();

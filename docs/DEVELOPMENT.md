@@ -26,7 +26,7 @@ Visual Studio C++ desktop tools on Windows, or `clang`, `cmake`, `ninja-build`,
 `pkg-config`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, and
 `libstdc++-12-dev` on Ubuntu. On Ubuntu 24.04, install `libasound2t64` as well;
 it supplies `libasound.so.2` used by the Linux media library. A desktop session
-also needs a display server; headless UI tests use `xvfb`.
+also needs a display server; the integrated Flutter tests run headlessly.
 
 Moon's desktop tasks use the selected Xcode or an explicit `DEVELOPER_DIR`.
 When macOS only selected Command Line Tools, they use the installed
@@ -101,6 +101,17 @@ leaves hot reload to Flutter:
 moon run desktop:dev
 ```
 
+Closing the desktop window hides it to the tray and keeps the same Flutter
+engine and Dart client running. The tray has **Open Listenbox** and **Quit
+Listenbox**; only Quit cancels and drains active work before exiting. On macOS,
+either mouse button opens the tray menu. On Windows, left-click opens the
+window and right-click opens the menu.
+
+Automatic podcast sync uses the shared engine's hourly asynchronous wait.
+There is no busy loop, separate background service, or wake lock. System sleep
+and normal OS power management can defer syncs. The app does not wake the
+computer for them.
+
 For a development CLI invocation:
 
 ```sh
@@ -142,9 +153,9 @@ the Rust resource on the next full build.
 ## CI artifacts
 
 The `Client` workflow runs the frozen pub lockfile, analysis, release builds,
-a CLI `--help` smoke check, and the desktop Flutter integration test on native
-runners for all five targets. Linux runs the UI test under Xvfb. The standalone
-Flutter test belongs to this client repository; parent API E2E exercises the
-CLI. The workflow uploads separate CLI and desktop archives for each target,
+a CLI `--help` smoke check, and the headless desktop Flutter integration test
+on runners for all five targets. The test uses the real shared client and a
+local HTTP fixture without opening a window. Parent API E2E exercises the CLI.
+The workflow uploads separate CLI and desktop archives for each target,
 preserving Unix executable bits and macOS app symlinks. Missing native assets
 fail their target's build. The workflow does not publish a GitHub release.

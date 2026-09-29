@@ -29,15 +29,12 @@ tasks:
     inputs: ['project://client?group=sources']
     outputs: [dist/release/**/*]
   test-e2e:
-    description: Drive the native Flutter workspace through real shared client and local service fixtures.
-    # Native release and test builds share one Flutter/Xcode/CMake project.
-    # Finish release compilation before starting the native test build.
-    deps: ['~:build']
+    description: Exercise desktop flows headlessly with the real shared client and local HTTP fixtures.
+    deps: [client:prerequisites]
     command: dart ../../tool/flutter.dart test
     args:
       - --no-pub
-      - --device-id=$os
-      - integration_test/desktop_e2e.dart
+      - test/desktop_e2e_test.dart
     inputs: ['project://client?group=sources']
     options:
       cache: false
