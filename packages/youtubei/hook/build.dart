@@ -159,6 +159,7 @@ Future<void> main(List<String> args) async {
       input.outputDirectory.resolve(resourceFilename),
     );
     final rustArgs = [
+      '--crate-name=youtubejs_resource',
       '--crate-type=cdylib',
       '--edition=2021',
       '--target=$triple',
