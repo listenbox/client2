@@ -9,6 +9,11 @@ that same package source. Upgrade the pub dependency, Dart API usage, and all
 five native assets together; an older FJS library has a different binding ABI
 and cannot fill a missing target.
 
+Flutter selects `client_youtubei` as the desktop native implementation of FJS.
+Its native-asset hook supplies the matching library for both desktop and CLI,
+while application code imports the unmodified upstream Dart package. This
+avoids the upstream plugin's CargoKit build and missing macOS SwiftPM archive.
+
 On a native runner for each target, with Rust 1.98.1 and a C toolchain available,
 run `dart run tool/build_native.dart <target> <output-directory>` from the
 `client_youtubei` package. The script downloads the immutable pub.dev FJS 3.3.0

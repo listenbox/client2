@@ -22,7 +22,7 @@ for your host, then clone with submodules:
 ```sh
 git clone --recurse-submodules https://github.com/listenbox/client2.git
 cd client2
-flutter pub get --enforce-lockfile
+dart tool/flutter.dart pub get --enforce-lockfile
 moon run cli:build
 moon run desktop:build
 ```

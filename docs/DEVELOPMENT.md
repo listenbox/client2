@@ -18,7 +18,7 @@ Clone with submodules, then resolve the committed workspace lockfile:
 ```sh
 git clone --recurse-submodules https://github.com/listenbox/client2.git
 cd client2
-flutter pub get --enforce-lockfile
+dart tool/flutter.dart pub get --enforce-lockfile
 ```
 
 Flutter desktop builds need their ordinary host toolchain: Xcode on macOS,
@@ -68,6 +68,10 @@ libraries for all five targets from pinned FFmpegKit and FFmpeg sources. Its
 source patch leaves process signals with Dart, and the workflow writes a
 candidate URL, archive entry, and SHA-256 map. Commit the resulting pins before
 normal builds consume a new release.
+
+The patched FFmpegKit pins are still pending. Current builds use the original
+four-platform archives; Windows ARM64 is unavailable until the new release is
+pinned. Cancellation and clean CLI output also require that patched release.
 
 ## Run and edit
 

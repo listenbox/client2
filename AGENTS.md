@@ -9,6 +9,9 @@
   media preparation, and synchronization belong in sync-engine.
 - Embed the pinned YouTube.js submodule through youtubei. Never invoke a Node
   subprocess or the superseded Rust client at runtime.
+- Import the pinned upstream `package:fjs/fjs.dart`; do not copy its Dart
+  bindings or fork its runtime. Accept the QuickJS version shipped with FJS
+  and upgrade the Dart package and matching native artifacts together.
 - CLI and desktop must independently bundle pinned SQLite, QuickJS, and FFmpeg
   libraries. Normal builds consume verified prebuilt artifacts, never silently
   fall back to compiling native dependencies or loading system versions.
