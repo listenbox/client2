@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -29,10 +30,20 @@ void main() {
       expect(state.episodesSettled, isNotNull);
       await tester.runAsync(() => state.episodesSettled!.future);
       await tester.pump();
+      await tester.runAsync(() => service.artworkServed.future);
+      await tester.pumpAndSettle();
       expect(find.byKey(Key('show-${service.firstSlug}')), findsOneWidget);
       expect(find.byKey(Key('show-${service.secondSlug}')), findsOneWidget);
       expect(find.text('Ordinary podcast'), findsNothing);
       expect(find.text('No episodes synced yet.'), findsOneWidget);
+      expect(service.requests, contains('GET /artwork.png'));
+      expect(
+        find.descendant(
+          of: find.byKey(Key('show-${service.firstSlug}')),
+          matching: find.byIcon(Icons.headphones),
+        ),
+        findsNothing,
+      );
       expect(
         service.requests,
         containsAll([
@@ -119,8 +130,10 @@ class _DesktopFixture {
   final String credential;
   final requests = <String>[];
   final unexpected = <String>[];
+  final artworkServed = Completer<void>();
   late final Client client;
   final sourceUrl = 'https://www.youtube.com/playlist?list=PLdesktopFixture';
+  String get artworkUrl => 'http://localhost:${server.port}/artwork.png';
 
   static Future<_DesktopFixture> start() async {
     final random = Random.secure();
@@ -164,6 +177,7 @@ class _DesktopFixture {
     'source_kind': 'audio',
     'team_id': team,
     'title': title,
+    if (slug == firstSlug) 'image_url': artworkUrl,
     'youtube': imported
         ? {'kind': 'import', 'source_url': sourceUrl}
         : {'kind': 'none'},
@@ -173,6 +187,17 @@ class _DesktopFixture {
     final route = '${request.method} ${request.uri.path}';
     requests.add(route);
     await request.drain<void>();
+    if (route == 'GET /artwork.png') {
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.add(
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIaev/DwAFRAJ5mTYR+gAAAABJRU5ErkJggg==',
+        ),
+      );
+      await request.response.close();
+      if (!artworkServed.isCompleted) artworkServed.complete();
+      return;
+    }
     Object response;
     if (request.headers.value(HttpHeaders.authorizationHeader) !=
         'Bearer $credential') {

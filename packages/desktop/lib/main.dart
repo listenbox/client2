@@ -940,22 +940,42 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     ),
   );
 
-  Widget _artwork(String? url, double size, _Palette t) => ClipRRect(
-    borderRadius: BorderRadius.circular(size == 44 ? 8 : 14),
-    child: SizedBox(
-      width: size,
-      height: size,
-      child: url == null || url.isEmpty
-          ? _artworkFallback(t)
-          : Image.network(
-              url,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _artworkFallback(t),
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : _artworkFallback(t),
-            ),
-    ),
-  );
+  Widget _artwork(String? url, double size, _Palette t) {
+    final imageUrl = url?.trim();
+    final uri = imageUrl == null ? null : Uri.tryParse(imageUrl);
+    final validUrl =
+        uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.isNotEmpty;
+    final decodeSize = (size * MediaQuery.devicePixelRatioOf(context))
+        .ceil()
+        .clamp(1, 512);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size == 44 ? 8 : 14),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: !validUrl
+            ? _artworkFallback(t)
+            : Image(
+                image: ResizeImage(
+                  NetworkImage(imageUrl!),
+                  width: decodeSize,
+                  height: decodeSize,
+                  policy: ResizeImagePolicy.fit,
+                ),
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.medium,
+                loadingBuilder: (_, image, progress) =>
+                    progress == null ? image : _artworkFallback(t),
+                errorBuilder: (_, _, _) => _artworkFallback(t),
+              ),
+      ),
+    );
+  }
+
   Widget _artworkFallback(_Palette t) => Container(
     color: t.selected,
     child: Icon(Icons.headphones, color: t.muted, size: 22),
