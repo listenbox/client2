@@ -1,0 +1,48 @@
+{
+  "youtubejsRevision": "600a8cb83ecb5ebd55f7b4723c17e03d3ad19498",
+  "esbuildVersion": "0.28.2",
+  "esbuild": {
+    "macos-arm64": {
+      "package": "@esbuild/darwin-arm64",
+      "integrity": "sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==",
+      "binary": "bin/esbuild"
+    },
+    "macos-x64": {
+      "package": "@esbuild/darwin-x64",
+      "integrity": "sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==",
+      "binary": "bin/esbuild"
+    },
+    "linux-x64": {
+      "package": "@esbuild/linux-x64",
+      "integrity": "sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ==",
+      "binary": "bin/esbuild"
+    },
+    "windows-arm64": {
+      "package": "@esbuild/win32-arm64",
+      "integrity": "sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==",
+      "binary": "esbuild.exe"
+    },
+    "windows-x64": {
+      "package": "@esbuild/win32-x64",
+      "integrity": "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==",
+      "binary": "esbuild.exe"
+    }
+  },
+  "dependencies": [
+    {
+      "package": "@bufbuild/protobuf",
+      "version": "2.15.0",
+      "integrity": "sha512-DAheWUkVr/SJTWCc+lg9dhY0eN4SaWlf4+bG1KzHeXbnqt0AfB/NX0Z+VunGlM1ki1B4zVvye27MpKh/svySUA=="
+    },
+    {
+      "package": "fflate",
+      "version": "0.8.3",
+      "integrity": "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA=="
+    },
+    {
+      "package": "meriyah",
+      "version": "7.3.3",
+      "integrity": "sha512-uE5cnoNj+UYhoMdZDuymCzr5TzEuE3ZF2C4kn6Z76rLhkwnvZ/+6dUZnM41T3fifyuhW0+n8vK7eq6DKJxUfPA=="
+    }
+  ]
+}

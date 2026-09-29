@@ -1,0 +1,151 @@
+name: Client
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      RUSTUP_TOOLCHAIN: 1.98.1-${{ matrix.rust_host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+            cli: listenbox
+            rust_host: aarch64-apple-darwin
+          - target: macos-x64
+            runner: macos-15-intel
+            cli: listenbox
+            rust_host: x86_64-apple-darwin
+          - target: windows-x64
+            runner: windows-2025
+            cli: listenbox.exe
+            rust_host: x86_64-pc-windows-msvc
+          - target: windows-arm64
+            runner: windows-11-arm
+            cli: listenbox.exe
+            rust_host: aarch64-pc-windows-msvc
+          - target: linux-x64
+            runner: ubuntu-24.04
+            cli: listenbox
+            rust_host: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: subosito/flutter-action@v2
+        if: matrix.target != 'windows-arm64'
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      # The Flutter 3.47.5 Windows archive contains only x64 Dart. A source
+      # checkout bootstraps the pinned native ARM64 Dart and engine artifacts.
+      - name: Set up native Windows ARM64 Flutter SDK
+        if: matrix.target == 'windows-arm64'
+        shell: pwsh
+        run: |
+          $flutterDir = Join-Path $env:RUNNER_TEMP 'flutter-arm64'
+          git clone --depth 1 --branch 3.47.5 https://github.com/flutter/flutter.git $flutterDir
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter checkout failed.' }
+          & (Join-Path $flutterDir 'bin/flutter.bat') --version
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter bootstrap failed.' }
+          $dartVersion = & (Join-Path $flutterDir 'bin/dart.bat') --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $dartVersion -notmatch 'windows_arm64') {
+            throw "Expected native Windows ARM64 Dart: $dartVersion"
+          }
+          (Join-Path $flutterDir 'bin') >> $env:GITHUB_PATH
+          (Join-Path $flutterDir 'bin/cache/dart-sdk/bin') >> $env:GITHUB_PATH
+      - uses: moonrepo/setup-toolchain@v0
+        if: matrix.target != 'windows-arm64'
+        with:
+          moon-version: '2.5.5'
+      # Moon 2.5.5 has no Windows ARM64 binary. Only the task runner is emulated;
+      # Flutter and Dart above remain native ARM64.
+      - name: Set up Moon on Windows ARM64
+        if: matrix.target == 'windows-arm64'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'moon-x64'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          $archive = Join-Path $tools 'moon.zip'
+          Invoke-WebRequest 'https://github.com/moonrepo/moon/releases/download/v2.5.5/moon_cli-x86_64-pc-windows-msvc.zip' -OutFile $archive
+          $expected = '36d4d88284f3444d3e5759f69b7f181eb807a3bcd20ce0bf475099132b41eb74'
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'Moon archive checksum mismatch.'
+          }
+          Expand-Archive $archive -DestinationPath $tools
+          $tools >> $env:GITHUB_PATH
+      - name: Install native Rust 1.98.1 for YouTube.js resource asset
+        run: |
+          rustup toolchain install 1.98.1-${{ matrix.rust_host }} --profile minimal
+          rustup default 1.98.1-${{ matrix.rust_host }}
+      - name: Verify native Rust host
+        shell: bash
+        run: |
+          rustc -vV | grep -F 'host: ${{ matrix.rust_host }}'
+      - name: Install Linux desktop, tray, audio, and display libraries
+        if: matrix.target == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev libasound2t64 libayatana-appindicator3-dev xvfb
+      - name: Resolve frozen Dart workspace
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze and format check
+        if: matrix.target == 'linux-x64'
+        run: moon run client:lint
+      - name: Build CLI bundle
+        run: moon run cli:build
+      - name: Smoke CLI bundle
+        shell: bash
+        run: ./packages/cli/dist/release/bundle/bin/${{ matrix.cli }} --help
+      - name: Build desktop release bundle
+        run: moon run desktop:build
+      - name: Run desktop integration test
+        if: matrix.target != 'linux-x64'
+        run: moon run desktop:test-e2e
+      - name: Run Linux desktop integration test under Xvfb
+        if: matrix.target == 'linux-x64'
+        run: xvfb-run --auto-servernum moon run desktop:test-e2e
+      # Actions artifacts do not preserve Unix executable bits or app-bundle
+      # symlinks; archive each complete bundle before uploading it.
+      - name: Archive Unix bundles
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          tar -C packages/cli/dist/release -czf release-artifacts/listenbox-cli-${{ matrix.target }}.tar.gz bundle
+          tar -C packages/desktop/dist -czf release-artifacts/listenbox-desktop-${{ matrix.target }}.tar.gz release
+      - name: Archive Windows bundles
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-artifacts | Out-Null
+          Compress-Archive -Path packages/cli/dist/release/bundle -DestinationPath release-artifacts/listenbox-cli-${{ matrix.target }}.zip
+          Compress-Archive -Path packages/desktop/dist/release -DestinationPath release-artifacts/listenbox-desktop-${{ matrix.target }}.zip
+      - name: Upload CLI bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: listenbox-cli-${{ matrix.target }}
+          path: release-artifacts/listenbox-cli-${{ matrix.target }}.*
+          if-no-files-found: error
+      - name: Upload desktop bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: listenbox-desktop-${{ matrix.target }}
+          path: release-artifacts/listenbox-desktop-${{ matrix.target }}.*
+          if-no-files-found: error

@@ -1,0 +1,41 @@
+language: dart
+layer: application
+dependsOn: [client]
+toolchains:
+  default: system
+taskOptions:
+  cache: true
+  shell: false
+tasks:
+  dev:
+    description: Start a standard Flutter session; r reloads, R restarts, and IDEs can attach.
+    deps: [client:prerequisites]
+    command: flutter run
+    args:
+      - --device-id=$os
+    env:
+      LISTENBOX_CONFIG: $projectRoot/../../config/dev.yaml
+    preset: server
+    options:
+      interactive: true
+      cache: false
+      runInCI: false
+  build:
+    description: Build the release desktop bundle for the host OS and architecture.
+    deps: [client:prerequisites]
+    command: dart ../../tool/build.dart desktop
+    inputs: ['project://client?group=sources']
+    outputs: [dist/release/**/*]
+  test-e2e:
+    description: Drive the native Flutter workspace through real shared client and local service fixtures.
+    # Native release and test builds share one Flutter/Xcode/CMake project.
+    # Finish release compilation before starting the native test build.
+    deps: ['~:build']
+    command: flutter test
+    args:
+      - --no-pub
+      - --device-id=$os
+      - integration_test/desktop_e2e.dart
+    inputs: ['project://client?group=sources']
+    options:
+      cache: false
