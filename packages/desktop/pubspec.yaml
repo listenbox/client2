@@ -1,0 +1,25 @@
+name: listenbox_desktop
+description: Listenbox desktop application
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: ^3.13.0
+resolution: workspace
+dependencies:
+  flutter:
+    sdk: flutter
+  listenbox_sync_engine:
+    path: ../sync-engine
+  window_manager: ^0.5.1
+  tray_manager: ^0.5.2
+  url_launcher: ^6.3.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/tray.png
+    - assets/tray.ico

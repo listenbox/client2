@@ -1,0 +1,16 @@
+.dart_tool/
+.cache/
+.moon/cache/
+build/
+dist/
+**/build/
+**/dist/
+**/.flutter-plugins-dependencies
+**/ephemeral/
+**/Pods/
+**/Flutter/Flutter.framework/
+**/Flutter/Flutter.podspec
+.DS_Store
+vendor/node_modules/
+vendor/youtubejs/node_modules/
+vendor/bundle/

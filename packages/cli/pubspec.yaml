@@ -1,0 +1,10 @@
+name: listenbox_cli
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dependencies:
+  http: ^1.5.0
+  listenbox_sync_engine:
+    path: ../sync-engine

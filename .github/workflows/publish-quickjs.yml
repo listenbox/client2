@@ -1,0 +1,161 @@
+name: Publish pinned QuickJS artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: FJS ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+            rust_host: x86_64-unknown-linux-gnu
+          - target: windows-x64
+            runner: windows-2025
+            rust_host: x86_64-pc-windows-msvc
+          - target: windows-arm64
+            runner: windows-11-arm
+            rust_host: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        if: matrix.target != 'windows-arm64'
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      # The 3.47.5 Windows archive has x64 Dart only. Bootstrap native Dart
+      # from the same Flutter tag on Windows ARM64.
+      - name: Set up native Windows ARM64 Dart
+        if: matrix.target == 'windows-arm64'
+        shell: pwsh
+        run: |
+          $flutterDir = Join-Path $env:RUNNER_TEMP 'flutter-arm64'
+          git clone --depth 1 --branch 3.47.5 https://github.com/flutter/flutter.git $flutterDir
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter checkout failed.' }
+          & (Join-Path $flutterDir 'bin/flutter.bat') --version
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter bootstrap failed.' }
+          $dartVersion = & (Join-Path $flutterDir 'bin/dart.bat') --version 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $dartVersion -notmatch 'windows_arm64') {
+            throw "Expected native Windows ARM64 Dart: $dartVersion"
+          }
+          (Join-Path $flutterDir 'bin') >> $env:GITHUB_PATH
+          (Join-Path $flutterDir 'bin/cache/dart-sdk/bin') >> $env:GITHUB_PATH
+      - name: Install Linux C toolchain
+        if: matrix.target == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev cmake ninja-build pkg-config
+      - name: Pin Rust toolchain
+        run: |
+          rustup toolchain install 1.98.1-${{ matrix.rust_host }} --profile minimal
+          rustup default 1.98.1-${{ matrix.rust_host }}
+      - name: Verify native Rust host
+        shell: bash
+        run: |
+          rustc -vV | grep -F 'host: ${{ matrix.rust_host }}'
+      - name: Resolve frozen Dart workspace
+        run: flutter pub get --enforce-lockfile
+      # This explicit release job is the only caller of the native source
+      # builder. Normal client builds consume verified published artifacts.
+      - name: Build FJS from verified 3.3.0 source
+        run: dart packages/youtubei/tool/build_native.dart ${{ matrix.target }} native-out
+      - name: Upload native library
+        uses: actions/upload-artifact@v7
+        with:
+          name: quickjs-${{ matrix.target }}
+          path: native-out/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish immutable source build
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: quickjs-*
+          path: native-libraries
+      - name: Prepare release assets and candidate manifest
+        id: prepare
+        env:
+          SOURCE_SHA256: cd1a9e36dac80966bafcc222461b7ab314eda2160567429c9ac6c4d3120d93bc
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+
+          tag = f'fjs-3.3.0-{os.environ["GITHUB_SHA"][:12]}'
+          repository = os.environ['GITHUB_REPOSITORY']
+          output = Path('release-assets')
+          output.mkdir()
+          manifest = json.loads(Path('packages/youtubei/native_artifacts.json').read_text())
+          upstream = manifest.pop('sourceRelease')
+          manifest['sourceReleases'] = {'macos': upstream, 'linux-windows': tag}
+          manifest['sourceSha256'] = os.environ['SOURCE_SHA256']
+          notes = [
+              'Pinned FJS 3.3.0 native libraries for Listenbox client2.',
+              '',
+              f'Source: https://pub.dev/api/archives/fjs-3.3.0.tar.gz',
+              f'Source SHA-256: `{os.environ["SOURCE_SHA256"]}`',
+              'Rust: 1.98.1; builds use Cargo --locked on native runners.',
+              '',
+          ]
+          assets = {
+              'linux-x64': ('libfjs.so', 'fjs-3.3.0-linux-x64.so'),
+              'windows-x64': ('fjs.dll', 'fjs-3.3.0-windows-x64.dll'),
+              'windows-arm64': ('fjs.dll', 'fjs-3.3.0-windows-arm64.dll'),
+          }
+          for target, (native_name, asset_name) in assets.items():
+              source = Path('native-libraries') / f'quickjs-{target}' / native_name
+              destination = output / asset_name
+              shutil.copyfile(source, destination)
+              digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+              manifest['targets'][target] = {
+                  'url': f'https://github.com/{repository}/releases/download/{tag}/{asset_name}',
+                  'sha256': digest,
+                  'filename': native_name,
+              }
+              notes.append(f'- `{target}`: `{asset_name}` SHA-256 `{digest}`')
+          (output / 'native_artifacts.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          (output / 'release-notes.md').write_text('\n'.join(notes) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as github_output:
+              github_output.write(f'tag={tag}\n')
+          PY
+      - name: Publish pinned release once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $RELEASE_TAG already exists; refusing to replace its assets."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists; refusing to reuse it."
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --draft --prerelease --latest=false --title "FJS 3.3.0 pinned native assets" \
+            --notes-file release-assets/release-notes.md \
+            release-assets/*.so release-assets/*.dll release-assets/native_artifacts.json
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Upload candidate native artifact manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: quickjs-native-artifacts-candidate
+          path: release-assets/native_artifacts.json
+          if-no-files-found: error

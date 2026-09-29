@@ -1,0 +1,50 @@
+name: Publish native Windows ARM64 FFmpegKit
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified archive to a GitHub release
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: >-
+            git curl make tar zip python
+            mingw-w64-clang-aarch64-toolchain
+            mingw-w64-clang-aarch64-cmake
+            mingw-w64-clang-aarch64-ninja
+            mingw-w64-clang-aarch64-pkgconf
+            mingw-w64-clang-aarch64-SDL2
+            mingw-w64-clang-aarch64-jsoncpp
+      - name: Build native FFmpegKit artifact
+        shell: msys2 {0}
+        run: |
+          bash packages/sync-engine/tool/build_ffmpegkit_windows_arm64.sh "$PWD/.ffmpegkit-arm64-build"
+      - name: Preserve build result and digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpegkit-windows-arm64
+          path: |
+            ${{ github.workspace }}/.ffmpegkit-arm64-build/bundle-base-windows-arm64-shared-small-lgpl.zip
+          if-no-files-found: error
+      - name: Publish verified native bundle
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE '.ffmpegkit-arm64-build/bundle-base-windows-arm64-shared-small-lgpl.zip'
+          gh release create ffmpegkit-9.0.1-windows-arm64-v1 $archive --title 'FFmpegKit 9.0.1 Windows ARM64' --notes 'Native CLANGARM64 LGPL build from pinned FFmpeg 9.0.1 and FFmpegKit Extended source. See source build recipe in this repository.'

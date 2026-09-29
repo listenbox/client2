@@ -1,0 +1,19 @@
+name: listenbox_sync_engine
+publish_to: none
+environment:
+  sdk: ^3.13.0
+resolution: workspace
+dependencies:
+  archive: ^4.0.7
+  code_assets: ^2.1.0
+  client_youtubei:
+    path: ../youtubei
+  crypto: ^3.0.6
+  ffi: ^2.1.4
+  http: ^1.5.0
+  hooks: ^2.2.0
+  path: ^1.9.1
+  sqlite_async: 0.14.5
+  sqlite3: 3.6.0
+  uuid: ^4.6.0
+  yaml: ^3.1.3

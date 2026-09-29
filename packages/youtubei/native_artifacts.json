@@ -1,0 +1,19 @@
+{
+  "source": "fjs 3.3.0 (pub.dev archive), flutter_rust_bridge 2.12.0",
+  "sourceRelease": "precompiled_87504b7e670bb107f8e92403966bd43e6a7df975e3b94b46e623518a315c80d2",
+  "targets": {
+    "macos-arm64": {
+      "url": "https://github.com/fluttercandies/fjs/releases/download/precompiled_87504b7e670bb107f8e92403966bd43e6a7df975e3b94b46e623518a315c80d2/aarch64-apple-darwin_libfjs.dylib",
+      "sha256": "a0e442ba745387f63ccf7adea046501d9afcc1634e3afa48e5140cecb561f7b7",
+      "filename": "libfjs.dylib"
+    },
+    "macos-x64": {
+      "url": "https://github.com/fluttercandies/fjs/releases/download/precompiled_87504b7e670bb107f8e92403966bd43e6a7df975e3b94b46e623518a315c80d2/x86_64-apple-darwin_libfjs.dylib",
+      "sha256": "1f3466eda0375bb094490c1a2434fd90387a6ab984dc88a3d398ab7f9fb4c9ef",
+      "filename": "libfjs.dylib"
+    },
+    "linux-x64": null,
+    "windows-x64": null,
+    "windows-arm64": null
+  }
+}
