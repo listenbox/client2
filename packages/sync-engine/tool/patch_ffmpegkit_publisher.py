@@ -9,6 +9,9 @@ import sys
 EXPECTED = {
     "CMakeLists.txt": "ce7f20ca1d5d511df27913439ebfbc65e2d35f7abe6375ee1254af80aeb81932",
     "FfmpegKitDependencies.cmake": "eacb5c969a5ef926ca84bf2c81cc666e2c53f1e7c3d13299cfb348f4ef6f850c",
+    "pthread_compat.h": "7d594ed89e95b4b047426f7c6572c0edd1e149b05b6c5006cbbfa203e88c66cb",
+    # Applied after patch_ffmpegkit_signals.py has moved diagnostics to stderr.
+    "FFmpegKitConfig.cpp": "74c4a6269a19837624411a372343f6cb92bb9df1a9854e8a731562dd530dce8d",
 }
 
 
@@ -54,6 +57,22 @@ def main() -> None:
             )''',
         )
     elif target in ("windows-x64", "windows-arm64"):
+        # MSYS2 winpthreads uses an integer pthread_t. The upstream wrapper
+        # derives from the unrelated pthreads-win32 struct ABI.
+        pthread_header = root / "src" / "pthread_compat.h"
+        source = pthread_header.read_text()
+        wrapper_start = source.index("#ifdef __cplusplus\n#include <stdbool.h>")
+        wrapper_end = source.index("#endif // _WIN32")
+        replace_pinned(pthread_header, source[wrapper_start:wrapper_end], "")
+        # A winpthreads ID is not a Windows HANDLE. Stop and notify the callback
+        # loop above this block, then join it through the API that created it.
+        replace_pinned(
+            root / "src" / "FFmpegKitConfig.cpp",
+            '''    // Windows implementation
+    WaitForSingleObject((HANDLE)callbackThread, 5000);
+    CloseHandle((HANDLE)callbackThread);''',
+            '''    pthread_join(callbackThread, nullptr);''',
+        )
         # Both FFmpeg archives carry a framepool.o implementation. Resolve
         # their referenced objects together with static dependencies, without
         # forcing both copies into the DLL.

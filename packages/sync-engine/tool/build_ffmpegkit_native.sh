@@ -49,6 +49,11 @@ case "$target" in
   *) echo "unsupported native target: $target" >&2; exit 2 ;;
 esac
 
+if [[ "$ffmpeg_os" == darwin ]]; then
+  # Keep static dependencies on the same OS baseline as the shared library.
+  export MACOSX_DEPLOYMENT_TARGET=11.0
+fi
+
 mkdir -p "$(dirname "$work_root")"
 mkdir "$work_root"
 work_root="$(cd "$work_root" && pwd)"
