@@ -1,0 +1,27 @@
+language: dart
+layer: application
+dependsOn: [client]
+toolchains:
+  default: system
+taskOptions:
+  cache: true
+  shell: false
+tasks:
+  build:
+    description: Build the standalone Dart CLI with all pinned native libraries.
+    deps: [client:prerequisites]
+    command: dart ../../tool/build.dart cli
+    inputs: ['project://client?group=sources']
+    outputs: [dist/release/bundle/**/*]
+  build-e2e:
+    description: Build the CLI with the development profile and request logs for API E2E.
+    deps: [client:prerequisites]
+    command: dart ../../tool/build.dart cli-e2e
+    inputs: ['project://client?group=sources']
+    outputs: [dist/e2e/bundle/**/*]
+  run:
+    deps: [client:prerequisites]
+    command: dart run tool/listenbox_dev.dart
+    preset: utility
+    options:
+      runInCI: false

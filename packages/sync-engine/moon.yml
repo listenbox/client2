@@ -1,0 +1,5 @@
+language: dart
+layer: library
+dependsOn: [client, client-youtubei]
+toolchains:
+  default: system

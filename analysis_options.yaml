@@ -1,0 +1,6 @@
+analyzer:
+  exclude:
+    - '**/build/**'
+    - '**/dist/**'
+    - '**/ephemeral/**'
+    - '**/.dart_tool/**'

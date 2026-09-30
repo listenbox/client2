@@ -1,0 +1,80 @@
+language: dart
+layer: library
+tags: [client-workspace]
+toolchains:
+  default: system
+taskOptions:
+  cache: true
+  shell: false
+fileGroups:
+  sources:
+    - pubspec.yaml
+    - pubspec.lock
+    - rust-toolchain.toml
+    - .cargo/config.toml
+    - .kache.toml
+    - analysis_options.yaml
+    - config/*.yaml
+    - .gitmodules
+    - .moon/**/*.yml
+    - moon.yml
+    - tool/**/*.dart
+    - packages/**/pubspec.yaml
+    - packages/**/lib/**/*.dart
+    - packages/**/bin/**/*.dart
+    - packages/**/tool/**/*
+    - packages/**/hook/**/*
+    - packages/**/native/**/*
+    - packages/**/native*.json
+    - packages/youtubei/linux/CMakeLists.txt
+    - packages/youtubei/windows/CMakeLists.txt
+    - packages/youtubei/youtubejs_tools.json
+    - packages/**/moon.yml
+    - packages/desktop/test/**/*.dart
+    - packages/desktop/macos/**/*
+    - packages/desktop/windows/**/*
+    - packages/desktop/linux/**/*
+    - packages/desktop/assets/**/*
+    - vendor/youtubejs/src/**/*
+    - vendor/youtubejs/protos/generated/**/*
+    - vendor/youtubejs/package.json
+    - vendor/youtubejs/tsconfig.json
+    - '!**/ephemeral/**'
+    - '!**/Pods/**'
+    - '!**/build/**'
+    - '!**/dist/**'
+tasks:
+  install:
+    command: dart tool/flutter.dart pub get --enforce-lockfile
+    inputs: [pubspec.yaml, pubspec.lock, 'packages/*/pubspec.yaml']
+    options:
+      cache: false
+      internal: true
+      outputStyle: buffer-only-failure
+  codegen:
+    description: Use the committed API client; the parent workspace regenerates it with Oasmith.
+    inputs: []
+  prerequisites:
+    deps: ['~:install', '~:codegen']
+    inputs: []
+  lint:
+    deps: ['~:prerequisites']
+    command: dart tool/check.dart
+    inputs: ['@group(sources)']
+  format:
+    command: dart format tool packages
+    inputs: ['@group(sources)']
+    options:
+      cache: false
+      runInCI: false
+  check:
+    deps: ['~:lint', 'cli:build', 'desktop:build', 'desktop:test-e2e']
+    inputs: []
+    options:
+      runInCI: false
+  outdated:
+    command: flutter pub outdated
+    inputs: [pubspec.yaml, pubspec.lock, 'packages/**/pubspec.yaml']
+    options:
+      cache: false
+      runInCI: false

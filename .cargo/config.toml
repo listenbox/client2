@@ -1,0 +1,5 @@
+[build]
+# The manual FJS publisher runs Cargo from this workspace with an external
+# manifest path. Normal client builds only compile the tiny Rust resource.
+rustc-wrapper = "kache"
+incremental = false

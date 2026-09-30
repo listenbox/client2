@@ -1,0 +1,17 @@
+defaultProject: client
+projects:
+  client: .
+  cli: packages/cli
+  desktop: packages/desktop
+  client-engine: packages/sync-engine
+  client-youtubei: packages/youtubei
+versionConstraint: ">=2.5.4 <3.0.0"
+vcs:
+  client: git
+  defaultBranch: master
+pipeline:
+  installDependencies: false
+  syncProjects: false
+  syncWorkspace: false
+hasher:
+  walkStrategy: glob

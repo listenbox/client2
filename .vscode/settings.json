@@ -1,0 +1,8 @@
+{
+  "dart.projectSearchDepth": 3,
+  "dart.flutterHotReloadOnSave": "allIfDirty",
+  "[dart]": {
+    "editor.defaultFormatter": "Dart-Code.dart-code",
+    "editor.formatOnSave": true
+  }
+}

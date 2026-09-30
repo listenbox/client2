@@ -12,6 +12,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       RUSTUP_TOOLCHAIN: 1.98.1-${{ matrix.rust_host }}
+      KACHE_CONFIG: ${{ github.workspace }}/.kache.toml
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +64,24 @@ jobs:
         shell: bash
         run: |
           rustc -vV | grep -F 'host: ${{ matrix.rust_host }}'
+      - name: Restore shared Rust compiler cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ runner.temp }}/kache
+          key: client2-rust-kache-v1-0.27.0-${{ matrix.target }}-${{ hashFiles('.kache.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}-${{ github.workflow }}-${{ github.sha }}
+          restore-keys: |
+            client2-rust-kache-v1-0.27.0-${{ matrix.target }}-${{ hashFiles('.kache.toml', '.cargo/config.toml', 'rust-toolchain.toml') }}-
+      - name: Install Kache 0.27.0 for the FJS source publisher
+        uses: kunobi-ninja/kache-action@ad7317540dcdd71c904f7a60a87b620a0c0e67ed # v1
+        with:
+          version: '0.27.0'
+          cache-dir: ${{ runner.temp }}/kache
+          cache-executables: true
+          github-cache: false
+          pr-comment: false
       - name: Resolve frozen Dart workspace
         run: flutter pub get --enforce-lockfile
       # This explicit release job is the only caller of the native source

@@ -8,6 +8,8 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
+  client_youtubei:
+    path: ../youtubei
   listenbox_sync_engine:
     path: ../sync-engine
   window_manager: ^0.5.1
@@ -16,10 +18,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  integration_test:
-    sdk: flutter
 flutter:
   uses-material-design: true
   assets:
     - assets/tray.png
-    - assets/tray.ico
+    - assets/tray-macos.png
+    - assets/tray-windows.ico

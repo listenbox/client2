@@ -1,0 +1,40 @@
+language: dart
+layer: application
+dependsOn: [client]
+toolchains:
+  default: system
+taskOptions:
+  cache: true
+  shell: false
+tasks:
+  dev:
+    description: Start a standard Flutter session; r reloads, R restarts, and IDEs can attach.
+    deps: [client:prerequisites]
+    command: dart ../../tool/flutter.dart run
+    args:
+      - --no-pub
+      - --device-id=$os
+    inputs: []
+    env:
+      LISTENBOX_CONFIG: $projectRoot/../../config/dev.yaml
+    preset: server
+    options:
+      interactive: true
+      cache: false
+      runInCI: false
+  build:
+    description: Build the release desktop bundle for the host OS and architecture.
+    deps: [client:prerequisites]
+    command: dart ../../tool/build.dart desktop
+    inputs: ['project://client?group=sources']
+    outputs: [dist/release/**/*]
+  test-e2e:
+    description: Exercise desktop flows headlessly with the real shared client and local HTTP fixtures.
+    deps: [client:prerequisites]
+    command: dart ../../tool/flutter.dart test
+    args:
+      - --no-pub
+      - test/desktop_e2e_test.dart
+    inputs: ['project://client?group=sources']
+    options:
+      cache: false
