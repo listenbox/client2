@@ -34,10 +34,14 @@ class Download {
     required this.sourceId,
     required this.sourceTitle,
     required this.title,
+    required this.sourceUrl,
+    this.position,
   });
   final String id;
   final String sourceId;
   final String sourceTitle;
+  final String sourceUrl;
+  final int? position;
   String title;
   int? durationSeconds;
   String? reason;
@@ -83,7 +87,7 @@ class DownloadManager {
   List<Transfer> enqueue(
     String sourceId,
     String sourceTitle,
-    List<({String id, String title})> episodes,
+    List<({String id, String title, int position})> episodes,
   ) {
     removeSource(sourceId);
     final result = <Transfer>[];
@@ -93,6 +97,8 @@ class DownloadManager {
         sourceId: sourceId,
         sourceTitle: sourceTitle,
         title: episode.title,
+        sourceUrl: 'https://www.youtube.com/watch?v=${episode.id}',
+        position: episode.position,
       );
       _items.add(item);
       result.add(Transfer._(this, item));
@@ -196,7 +202,10 @@ class ActiveTransfer {
   void finish([Object? error]) {
     if (_finished) return;
     _finished = true;
-    if (error != null) {
+    if (error is OperationCancelled) {
+      transfer.item.error = null;
+      transfer.phase(Phase.queued);
+    } else if (error != null) {
       transfer.error(error);
     } else if (transfer.item.phase != Phase.skipped) {
       transfer.phase(Phase.complete);

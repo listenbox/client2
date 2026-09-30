@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'desktop_host.dart';
+import 'design_tokens.dart';
+import 'theme.dart';
 
 /// The client belongs to the running app, so a Flutter hot reload rebuilds the
 /// interface without reopening SQLite or cancelling admitted transfers.
@@ -72,23 +74,6 @@ class ListenboxDesktop extends StatefulWidget {
   State<ListenboxDesktop> createState() => DesktopWorkspaceState();
 }
 
-class _Palette {
-  const _Palette(this.dark);
-  final bool dark;
-  Color get background =>
-      dark ? const Color(0xff242424) : const Color(0xfffcfcfc);
-  Color get rail => dark ? const Color(0xff292929) : const Color(0xfff1f1f1);
-  Color get sheet => dark ? const Color(0xff2b2b2b) : Colors.white;
-  Color get ink => dark ? const Color(0xfff8f8f8) : const Color(0xff303030);
-  Color get muted => dark ? const Color(0xffcccccc) : const Color(0xff656565);
-  Color get border => dark ? const Color(0xff777777) : const Color(0xff999999);
-  Color get divider => dark ? const Color(0xff444444) : const Color(0xffe7e7e7);
-  Color get selected =>
-      dark ? const Color(0xff484848) : const Color(0xffe6e6e6);
-  Color get action => dark ? const Color(0xff727272) : const Color(0xff303030);
-  Color get danger => dark ? const Color(0xffef9a8d) : const Color(0xffb44d42);
-}
-
 class _Notice {
   const _Notice(this.message, {this.upgradeUrl, this.signIn = false});
   final String message;
@@ -119,6 +104,8 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
   String? _cookieError;
   _Notice? notice;
   List<Map<String, dynamic>> episodes = [];
+  List<Download> _sourceItems = [];
+  bool _showIssues = false;
   final Map<String, CancellationToken> _jobs = {};
   final Map<String, String> _reports = {};
   final TextEditingController source = TextEditingController();
@@ -394,7 +381,6 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
         onReport: (report) {
           if (!mounted || stopping) return;
           setState(() => _reports[slug] = _reportText(report));
-          if (selectedSlug == slug) unawaited(loadEpisodes());
         },
       );
     } on OperationCancelled {
@@ -419,6 +405,8 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     } finally {
       if (mounted) setState(() => _jobs.remove(slug));
       settled.complete();
+      if (mounted && !stopping && selectedSlug == slug)
+        unawaited(loadEpisodes());
     }
   }
 
@@ -432,6 +420,8 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
       importOpen = false;
       settingsOpen = false;
       episodes = [];
+      _sourceItems = [];
+      _showIssues = false;
       _episodeCursor = null;
       _episodeError = null;
     });
@@ -463,11 +453,14 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
         cancel: token,
       );
       if (!mounted || request != _episodeRequest || stopping) return;
+      final sourceItems = await client.syncItems(slug, cancel: token);
+      if (!mounted || request != _episodeRequest || stopping) return;
       final incoming = (page['episodes'] as List).cast<Map<String, dynamic>>();
       final next = page['next_cursor'] as String?;
       setState(() {
         final previous = append ? episodes : <Map<String, dynamic>>[];
         final ids = previous.map((row) => row['id']).toSet();
+        _sourceItems = sourceItems;
         episodes = [
           ...previous,
           ...incoming.where((row) => ids.add(row['id'])),
@@ -656,64 +649,14 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
 
   @override
   Widget build(BuildContext context) {
-    final t = _Palette(
+    final t = ListenboxTheme(
       MediaQuery.platformBrightnessOf(context) == Brightness.dark,
-    );
-    final theme = ThemeData(
-      brightness: t.dark ? Brightness.dark : Brightness.light,
-      useMaterial3: true,
-      fontFamily: Platform.isMacOS ? '.SF NS Text' : null,
-      scaffoldBackgroundColor: t.background,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: t.action,
-        brightness: t.dark ? Brightness.dark : Brightness.light,
-        surface: t.sheet,
-        onSurface: t.ink,
-        primary: t.action,
-        onPrimary: Colors.white,
-      ),
-      textTheme: Theme.of(context).textTheme
-          .apply(bodyColor: t.ink, displayColor: t.ink),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: t.ink,
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: t.action,
-          foregroundColor: Colors.white,
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          minimumSize: const Size(0, 36),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        isDense: true,
-        filled: true,
-        fillColor: t.sheet,
-        hintStyle: TextStyle(color: t.muted),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: t.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: t.border),
-        ),
-      ),
     );
     return MaterialApp(
       title: 'Listenbox',
       debugShowCheckedModeBanner: false,
-      theme: theme,
+      theme: const ListenboxTheme(false).data,
+      darkTheme: const ListenboxTheme(true).data,
       home: Scaffold(
         body: Stack(
           children: [
@@ -730,7 +673,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     );
   }
 
-  Widget _sidebar(_Palette t) {
+  Widget _sidebar(ListenboxTheme t) {
     final scoped = shows
         .where((show) => teamId == null || show['team_id'] == teamId)
         .toList();
@@ -748,10 +691,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: t.divider)),
             ),
-            child: const Text(
-              'Listenbox',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
+            child: Text('Listenbox', style: t.label),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -764,7 +704,9 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
                       : null,
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.zero,
-                    minimumSize: const Size.fromHeight(36),
+                    minimumSize: const Size.fromHeight(
+                      DesignTokens.buttonPrimaryHeight,
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -772,11 +714,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
                         child: Text(
                           teamId == null ? 'All teams' : _teamName(teamId),
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: t.ink,
-                          ),
+                          style: t.title,
                         ),
                       ),
                       Icon(
@@ -820,7 +758,9 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
                       : null,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    minimumSize: const Size.fromHeight(36),
+                    minimumSize: const Size.fromHeight(
+                      DesignTokens.buttonPrimaryHeight,
+                    ),
                   ),
                   child: const Row(
                     children: [
@@ -848,7 +788,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                     child: Text(
                       'Your imported playlists will appear here.',
-                      style: TextStyle(fontSize: 12, color: t.muted),
+                      style: t.meta,
                     ),
                   );
                 final show = scoped[index], slug = _string(show, 'slug');
@@ -862,11 +802,13 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
                   child: Material(
                     color: !importOpen && selectedSlug == slug
                         ? t.selected
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
+                        : t.sheet.withValues(alpha: 0),
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
                     child: InkWell(
                       key: Key('show-$slug'),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(
+                        DesignTokens.radiusMd,
+                      ),
                       onTap: () => selectShow(slug),
                       child: Padding(
                         padding: const EdgeInsets.all(8),
@@ -882,19 +824,10 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
                                     _string(show, 'title'),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                    style: t.label,
                                   ),
                                   const SizedBox(height: 3),
-                                  Text(
-                                    status,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: t.muted,
-                                    ),
-                                  ),
+                                  Text(status, style: t.meta),
                                 ],
                               ),
                             ),
@@ -911,10 +844,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
             padding: const EdgeInsets.all(16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                'YouTube → Listenbox',
-                style: TextStyle(fontSize: 12, color: t.muted),
-              ),
+              child: Text('YouTube → Listenbox', style: t.meta),
             ),
           ),
         ],
@@ -922,7 +852,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     );
   }
 
-  Widget _teamChoice(_Palette t, String label, String? id) => TextButton(
+  Widget _teamChoice(ListenboxTheme t, String label, String? id) => TextButton(
     key: Key(id == null ? 'all-teams' : 'team-$id'),
     onPressed: () {
       setState(() {
@@ -935,7 +865,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
       selectShow(first?['slug'] as String?);
     },
     style: TextButton.styleFrom(
-      minimumSize: const Size.fromHeight(36),
+      minimumSize: const Size.fromHeight(DesignTokens.buttonPrimaryHeight),
       padding: const EdgeInsets.symmetric(horizontal: 8),
     ),
     child: Align(
@@ -949,7 +879,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     ),
   );
 
-  Widget _artwork(String? url, double size, _Palette t) {
+  Widget _artwork(String? url, double size, ListenboxTheme t) {
     final imageUrl = url?.trim();
     final uri = imageUrl == null ? null : Uri.tryParse(imageUrl);
     final validUrl =
@@ -960,7 +890,9 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
         .ceil()
         .clamp(1, 512);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(size == 44 ? 8 : 14),
+      borderRadius: BorderRadius.circular(
+        size == 44 ? DesignTokens.radiusIcon : DesignTokens.radiusMedia,
+      ),
       child: SizedBox(
         width: size,
         height: size,
@@ -985,85 +917,117 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     );
   }
 
-  Widget _artworkFallback(_Palette t) => Container(
+  Widget _artworkFallback(ListenboxTheme t) => Container(
     color: t.selected,
     child: Icon(Icons.headphones, color: t.muted, size: 22),
   );
 
-  Widget _mainPane(_Palette t) => Column(
-    children: [
-      Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: t.divider)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                settingsOpen ? 'Settings' : 'YouTube imports',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: t.muted,
+  Widget _mainPane(ListenboxTheme t) {
+    final rows = _rows;
+    final visible = rows.where((row) => row.issue == _showIssues).toList();
+    return Column(
+      children: [
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: t.divider)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  settingsOpen ? 'Settings' : 'YouTube imports',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.label.copyWith(color: t.muted),
                 ),
               ),
-            ),
-            if (loaded)
+              if (loaded)
+                TextButton(
+                  key: const Key('reload'),
+                  onPressed: loading || stopping ? null : reload,
+                  child: const Text('Reload'),
+                ),
+              if (loaded) const SizedBox(width: 12),
+              if (loaded)
+                TextButton(
+                  key: const Key('settings'),
+                  onPressed: stopping ? null : openSettings,
+                  child: const Text('Settings'),
+                ),
+              const SizedBox(width: 12),
               TextButton(
-                key: const Key('reload'),
-                onPressed: loading || stopping ? null : reload,
-                child: const Text('Reload'),
+                key: const Key('account'),
+                onPressed: authenticating || stopping
+                    ? null
+                    : (loaded ? logout : login),
+                child: Text(
+                  authenticating
+                      ? 'Finish in your browser…'
+                      : loaded
+                      ? 'Log out'
+                      : 'Sign in',
+                ),
               ),
-            if (loaded) const SizedBox(width: 12),
-            if (loaded)
-              TextButton(
-                key: const Key('settings'),
-                onPressed: stopping ? null : openSettings,
-                child: const Text('Settings'),
-              ),
-            const SizedBox(width: 12),
-            TextButton(
-              key: const Key('account'),
-              onPressed: authenticating || stopping
-                  ? null
-                  : (loaded ? logout : login),
-              child: Text(
-                authenticating
-                    ? 'Finish in your browser…'
-                    : loaded
-                    ? 'Log out'
-                    : 'Sign in',
-              ),
-            ),
-          ],
-        ),
-      ),
-      Expanded(
-        child: SingleChildScrollView(
-          key: const Key('workspace-content'),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (notice != null && !settingsOpen) _errorNotice(t),
-              if (settingsOpen)
-                _settings(t)
-              else if (importOpen)
-                _importForm(t)
-              else
-                _detail(t),
-              if (loaded && !settingsOpen && !importOpen) _episodeList(t),
-              if (loaded && !settingsOpen) _transfers(t),
             ],
           ),
         ),
-      ),
-    ],
-  );
+        Expanded(
+          child: CustomScrollView(
+            key: const Key('workspace-content'),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(DesignTokens.spaceXl),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (notice != null && !settingsOpen) _errorNotice(t),
+                      if (settingsOpen)
+                        _settings(t)
+                      else if (importOpen)
+                        _importForm(t)
+                      else
+                        _detail(t),
+                      if (loaded &&
+                          !settingsOpen &&
+                          !importOpen &&
+                          selectedShow != null)
+                        _episodeHeader(t, rows),
+                    ],
+                  ),
+                ),
+              ),
+              if (loaded &&
+                  !settingsOpen &&
+                  !importOpen &&
+                  selectedShow != null) ...[
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignTokens.spaceXl,
+                  ),
+                  sliver: SliverList.builder(
+                    itemCount: visible.length,
+                    itemBuilder: (context, index) =>
+                        _episodeRow(visible[index], t),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(DesignTokens.spaceXl),
+                    child: _episodeFooter(t, visible),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
-  Widget _errorNotice(_Palette t) => Padding(
+  Widget _errorNotice(ListenboxTheme t) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: Column(
       key: const Key('error-notice'),
@@ -1086,7 +1050,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     ),
   );
 
-  Widget _importForm(_Palette t) {
+  Widget _importForm(ListenboxTheme t) {
     final team = _teamName(catalog?.importTeam);
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 620),
@@ -1095,22 +1059,17 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Import a YouTube playlist',
-              style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
-            ),
+            Text('Import a YouTube playlist', style: t.pageTitle),
             const SizedBox(height: 12),
             Text(
               'Give your playlist a podcast home. Import it once, then keep new episodes coming with Listenbox.',
-              style: TextStyle(fontSize: 14, color: t.muted),
+              style: t.meta,
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Playlist URL',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
+            Text('Playlist URL', style: t.label),
             const SizedBox(height: 8),
             TextField(
+              style: t.field,
               key: const Key('playlist-url'),
               controller: source,
               enabled: !importing && !stopping,
@@ -1121,13 +1080,10 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
             const SizedBox(height: 8),
             Text(
               'Use a public playlist. Its title becomes your podcast’s name.',
-              style: TextStyle(fontSize: 12, color: t.muted),
+              style: t.meta,
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Podcast format',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
+            Text('Podcast format', style: t.label),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -1145,7 +1101,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
               importVideo
                   ? 'A video plan with enough storage for the playlist is required. Playlist order is preserved. On later syncs, videos removed from the playlist are removed from the podcast.'
                   : 'A paid podcast plan is required. Playlist order is preserved. On later syncs, videos removed from the playlist are removed from the podcast.',
-              style: TextStyle(fontSize: 12, color: t.muted),
+              style: t.meta,
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -1184,7 +1140,12 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     );
   }
 
-  Widget _formatChoice(_Palette t, String label, IconData icon, bool video) {
+  Widget _formatChoice(
+    ListenboxTheme t,
+    String label,
+    IconData icon,
+    bool video,
+  ) {
     final selected = importVideo == video;
     return selected
         ? FilledButton(
@@ -1210,7 +1171,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
               foregroundColor: t.ink,
               side: BorderSide(color: t.border),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
               ),
             ),
             child: Row(
@@ -1224,7 +1185,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
           );
   }
 
-  Widget _detail(_Palette t) {
+  Widget _detail(ListenboxTheme t) {
     if (!loaded)
       return ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
@@ -1233,10 +1194,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Your playlists. Your podcast.',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
-              ),
+              Text('Your playlists. Your podcast.', style: t.pageTitle),
               const SizedBox(height: 24),
               Text(
                 'Bring a public YouTube playlist to Listenbox, then keep your podcast in sync from this desktop.',
@@ -1277,13 +1235,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _string(show, 'title'),
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  Text(_string(show, 'title'), style: t.pageTitle),
                   const SizedBox(height: 16),
                   Text(
                     show['source_kind'] == 'video'
@@ -1312,10 +1264,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
         const SizedBox(height: 24),
         Divider(color: t.divider),
         const SizedBox(height: 24),
-        const Text(
-          'YouTube source',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
+        Text('YouTube source', style: t.title),
         const SizedBox(height: 12),
         TextButton(
           key: const Key('open-playlist'),
@@ -1334,7 +1283,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
           isPlaylist
               ? 'Episodes follow the playlist’s order. Removed videos leave this podcast on the next sync.'
               : 'This podcast imports a YouTube video. Sync again to resume unfinished transfers.',
-          style: TextStyle(fontSize: 12, color: t.muted),
+          style: t.meta,
         ),
         if (!active)
           Padding(
@@ -1392,169 +1341,197 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     );
   }
 
-  Widget _episodeList(_Palette t) {
-    if (selectedShow == null) return const SizedBox.shrink();
+  List<_EpisodeRow> get _rows {
+    final slug = selectedSlug;
+    final sources = {for (final item in _sourceItems) item.sourceUrl: item};
+    final live = <String>{};
+    for (final item in progress?.items ?? const <Download>[]) {
+      if (item.sourceId == slug) {
+        sources[item.sourceUrl] = item;
+        live.add(item.sourceUrl);
+      }
+    }
+    final published = {
+      for (final episode in episodes)
+        if (episode['source_url'] is String) episode['source_url'] as String,
+    };
+    final result = [
+      for (final (index, episode) in episodes.indexed)
+        _EpisodeRow(
+          order: index,
+          episode: episode,
+          item: sources[episode['source_url']],
+        ),
+      for (final item in sources.values)
+        if (!published.contains(item.sourceUrl) &&
+            (item.phase != Phase.complete || live.contains(item.sourceUrl)))
+          _EpisodeRow(item: item, order: episodes.length),
+    ];
+    result.sort((a, b) {
+      final position = a.position.compareTo(b.position);
+      return position != 0 ? position : a.order.compareTo(b.order);
+    });
+    return result;
+  }
+
+  Widget _episodeHeader(ListenboxTheme t, List<_EpisodeRow> rows) {
+    final missing = rows.where((row) => row.issue).length;
+    final published = episodes
+        .where((episode) => episode['status'] == 'published')
+        .length;
     return Padding(
-      padding: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.only(top: DesignTokens.spaceXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Divider(color: t.divider),
-          const SizedBox(height: 24),
-          const Text(
-            'Episodes',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          const SizedBox(height: DesignTokens.spaceXl),
+          Text(
+            '${_episodeCursor == null ? '$published in RSS' : '${episodes.length} episodes loaded'} · $missing not imported',
+            key: const Key('episode-summary'),
+            style: t.supporting,
           ),
-          for (final episode in episodes)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: t.divider)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_string(episode, 'title')),
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      if (episode['duration_seconds'] case final int duration
-                          when duration > 0)
-                        _duration(duration),
-                      episode['status'] == 'published' ? 'Published' : 'Draft',
-                    ].join(' · '),
-                    style: TextStyle(fontSize: 12, color: t.muted),
-                  ),
-                ],
-              ),
-            ),
-          if (_episodeLoading)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'Loading episodes…',
-                style: TextStyle(color: t.muted),
-              ),
-            ),
-          if (!_episodeLoading && _episodeError != null) ...[
-            Text(_episodeError!, style: TextStyle(color: t.danger)),
-            TextButton(
-              key: const Key('retry-episodes'),
-              onPressed: loadEpisodes,
-              child: const Text('Reload episodes'),
-            ),
-          ],
-          if (!_episodeLoading && _episodeError == null && episodes.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                'No episodes synced yet.',
-                style: TextStyle(color: t.muted),
-              ),
-            ),
-          if (_episodeCursor != null)
-            TextButton(
-              key: const Key('more-episodes'),
-              onPressed: _episodeLoading
-                  ? null
-                  : () => loadEpisodes(append: true),
-              child: const Text('Load more episodes'),
-            ),
+          const SizedBox(height: DesignTokens.spaceMd),
+          Wrap(
+            spacing: DesignTokens.spaceSm,
+            runSpacing: DesignTokens.spaceSm,
+            children: [
+              _episodeFilter(t, false, 'Episodes'),
+              _episodeFilter(t, true, 'Not imported ($missing)'),
+            ],
+          ),
         ],
       ),
     );
   }
+
+  Widget _episodeFilter(ListenboxTheme t, bool issues, String label) =>
+      Semantics(
+        selected: _showIssues == issues,
+        child: TextButton(
+          key: Key(issues ? 'filter-not-imported' : 'filter-episodes'),
+          onPressed: () => setState(() => _showIssues = issues),
+          style: TextButton.styleFrom(
+            backgroundColor: _showIssues == issues ? t.selected : null,
+          ),
+          child: Text(label),
+        ),
+      );
+
+  Widget _episodeRow(_EpisodeRow row, ListenboxTheme t) {
+    final item = row.item;
+    final episode = row.episode;
+    final status = episode != null
+        ? (episode['status'] == 'published' ? 'Published' : 'Draft')
+        : item!.phase == Phase.queued && !_jobs.containsKey(selectedSlug)
+        ? 'Waiting for sync'
+        : _phase(item.phase);
+    final duration =
+        episode?['duration_seconds'] as int? ?? item?.durationSeconds;
+    return Container(
+      key: Key('episode-row-${episode?['id'] ?? item!.id}'),
+      padding: const EdgeInsets.symmetric(vertical: DesignTokens.spaceLg),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.divider)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      episode?['title'] as String? ?? item!.title,
+                      style: t.body,
+                    ),
+                    if (duration != null && duration > 0) ...[
+                      const SizedBox(height: DesignTokens.spaceXs),
+                      Text(_duration(duration), style: t.meta),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: DesignTokens.spaceLg),
+              Text(
+                status,
+                style: t.meta.copyWith(color: row.issue ? t.danger : t.muted),
+              ),
+            ],
+          ),
+          if (episode == null &&
+              item!.phase == Phase.downloading &&
+              item.total > 0) ...[
+            const SizedBox(height: DesignTokens.spaceSm),
+            LinearProgressIndicator(
+              value: (item.received / item.total).clamp(0, 1),
+              semanticsLabel: 'Downloading ${item.title}',
+              semanticsValue:
+                  '${(item.received / item.total * 100).round().clamp(0, 100)}',
+              minHeight: DesignTokens.spaceXs,
+            ),
+            const SizedBox(height: DesignTokens.spaceXs),
+            Text(
+              '${(item.received / 1000000).toStringAsFixed(1)} / ${(item.total / 1000000).toStringAsFixed(1)} MB',
+              style: t.meta,
+            ),
+          ],
+          if (row.issue) ...[
+            const SizedBox(height: DesignTokens.spaceSm),
+            Text(
+              item!.reason ?? item.error ?? 'Import did not finish.',
+              style: t.body,
+            ),
+            const SizedBox(height: DesignTokens.spaceXs),
+            TextButton.icon(
+              key: Key('open-source-${item.id}'),
+              onPressed: () => _open(item.sourceUrl),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Open on YouTube'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _episodeFooter(ListenboxTheme t, List<_EpisodeRow> visible) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (_episodeLoading) Text('Loading episodes…', style: t.supporting),
+      if (!_episodeLoading && _episodeError != null) ...[
+        Text(_episodeError!, style: t.body.copyWith(color: t.danger)),
+        TextButton(
+          key: const Key('retry-episodes'),
+          onPressed: loadEpisodes,
+          child: const Text('Reload episodes'),
+        ),
+      ],
+      if (!_episodeLoading && _episodeError == null && visible.isEmpty)
+        Text(
+          _showIssues ? 'No import issues.' : 'No episodes synced yet.',
+          style: t.supporting,
+        ),
+      if (_showIssues && visible.isNotEmpty)
+        Text(
+          'Sync again after resolving the source issues.',
+          style: t.supporting,
+        ),
+      if (!_showIssues && _episodeCursor != null)
+        TextButton(
+          key: const Key('more-episodes'),
+          onPressed: _episodeLoading ? null : () => loadEpisodes(append: true),
+          child: const Text('Load more episodes'),
+        ),
+    ],
+  );
 
   String _duration(int seconds) => seconds >= 3600
       ? '${seconds ~/ 3600}:${((seconds ~/ 60) % 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}'
       : '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
-
-  Widget _transfers(_Palette t) {
-    final transfers =
-        progress?.items.reversed.take(100).toList() ?? const <Download>[];
-    return Padding(
-      padding: const EdgeInsets.only(top: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Divider(color: t.divider),
-          const SizedBox(height: 24),
-          const Text(
-            'Transfers',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          if (transfers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'New episodes will appear here as they sync.',
-                style: TextStyle(color: t.muted),
-              ),
-            ),
-          for (final item in transfers)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: t.divider)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.title),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.durationSeconds == null
-                                  ? item.sourceTitle
-                                  : '${item.sourceTitle} · ${_duration(item.durationSeconds!)}',
-                              style: TextStyle(fontSize: 12, color: t.muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        _phase(item.phase),
-                        style: TextStyle(
-                          color: item.phase == Phase.failed
-                              ? t.danger
-                              : t.muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (item.phase == Phase.downloading && item.total > 0) ...[
-                    const SizedBox(height: 8),
-                    LinearProgressIndicator(
-                      value: (item.received / item.total).clamp(0, 1),
-                      backgroundColor: t.selected,
-                      color: t.action,
-                      minHeight: 5,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${(item.received / 1000000).toStringAsFixed(1)} / ${(item.total / 1000000).toStringAsFixed(1)} MB',
-                      style: TextStyle(fontSize: 12, color: t.muted),
-                    ),
-                  ],
-                  if (item.reason != null)
-                    Text(item.reason!, style: TextStyle(color: t.muted)),
-                  if (item.error != null)
-                    Text(item.error!, style: TextStyle(color: t.danger)),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   String _phase(Phase phase) => switch (phase) {
     Phase.queued => 'Queued',
@@ -1562,24 +1539,19 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     Phase.downloading => 'Downloading',
     Phase.preparing => 'Preparing media',
     Phase.uploading => 'Uploading',
-    Phase.complete => 'Complete',
-    Phase.skipped => 'Skipped',
-    Phase.failed => 'Failed',
+    Phase.complete => 'Published',
+    Phase.skipped => 'Unavailable',
+    Phase.failed => 'Import failed',
   };
 
-  Widget _settings(_Palette t) => ConstrainedBox(
+  Widget _settings(ListenboxTheme t) => ConstrainedBox(
     constraints: const BoxConstraints(maxWidth: 720),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Expanded(
-              child: Text(
-                'Settings',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
-              ),
-            ),
+            Expanded(child: Text('Settings', style: t.pageTitle)),
             TextButton(
               key: const Key('close-settings'),
               onPressed: cookieBusy
@@ -1593,10 +1565,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
           ],
         ),
         const SizedBox(height: 24),
-        const Text(
-          'YouTube',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
+        Text('YouTube', style: t.title),
         const SizedBox(height: 8),
         const Text(
           'If YouTube asks you to sign in, add cookies from a private browser session to continue importing.',
@@ -1612,10 +1581,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
           child: const Text('How to export YouTube cookies'),
         ),
         const SizedBox(height: 24),
-        const Text(
-          'YouTube cookies',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
+        Text('YouTube cookies', style: t.label),
         const SizedBox(height: 8),
         Text(
           cookieSaved
@@ -1625,6 +1591,7 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
         ),
         const SizedBox(height: 8),
         TextField(
+          style: t.field,
           key: const Key('cookie-export'),
           controller: cookieText,
           enabled: !cookieBusy && !stopping,
@@ -1659,30 +1626,41 @@ class DesktopWorkspaceState extends State<ListenboxDesktop>
     ),
   );
 
-  Widget _quitNotice(_Palette t) => IgnorePointer(
+  Widget _quitNotice(ListenboxTheme t) => IgnorePointer(
     child: Center(
       child: Container(
         width: 280,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: t.action.withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusPanel),
         ),
-        child: const Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Saving progress',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
+            Text('Saving progress', style: t.title.copyWith(color: t.onAction)),
             SizedBox(height: 12),
             Text(
               'Finishing current work…',
-              style: TextStyle(color: Colors.white),
+              style: t.body.copyWith(color: t.onAction),
             ),
           ],
         ),
       ),
     ),
   );
+}
+
+class _EpisodeRow {
+  const _EpisodeRow({this.episode, this.item, required this.order});
+  final int order;
+  final Map<String, dynamic>? episode;
+  final Download? item;
+  bool get issue =>
+      episode == null &&
+      (item?.phase == Phase.skipped || item?.phase == Phase.failed);
+  int get position =>
+      item?.position ??
+      episode?['source_position'] as int? ??
+      0x7fffffffffffffff;
 }

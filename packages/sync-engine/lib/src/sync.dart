@@ -71,7 +71,23 @@ class Engine {
   final DownloadManager downloads;
   final CookieJar cookies;
   Database? _journal;
+  Future<Database>? _openingJournal;
   final Stopwatch _scanClock = Stopwatch()..start();
+
+  Future<Database> _database(Api api) async {
+    if (_journal case final value?) return value;
+    final opening = _openingJournal ??= Database.open(
+      Directory(api.config.directory),
+    );
+    try {
+      return _journal = await opening;
+    } finally {
+      _openingJournal = null;
+    }
+  }
+
+  Future<List<Download>> items(Api api, String slug) async =>
+      (await _database(api)).items(api.config.apiOrigin, slug);
 
   Future<void> close() async {
     await downloads.drain();
@@ -122,9 +138,7 @@ class Engine {
           'Another client is already syncing this show on this computer',
         );
       }
-      final journal = _journal ??= await Database.open(
-        Directory(api.config.directory),
-      );
+      final journal = await _database(api);
       final before = await inventory(api, slug);
       final collection = _source(before.show);
       if (collection == null)
@@ -154,16 +168,22 @@ class Engine {
         final orderedUrls = snapshot.present
             .map((video) => 'https://www.youtube.com/watch?v=${video.id}')
             .toList();
-        if (snapshot.canRemove)
-          await journal.snapshot(
-            api.config.apiOrigin,
-            slug,
-            collection,
-            orderedUrls,
-          );
+        await journal.snapshot(api.config.apiOrigin, slug, collection, [
+          for (final video in snapshot.present)
+            (
+              url: 'https://www.youtube.com/watch?v=${video.id}',
+              title: video.title,
+              duration: video.durationSeconds,
+            ),
+        ], canRemove: snapshot.canRemove);
         final remote = orderedUrls.toSet();
         // Published inventory is the authority after a lost acknowledgement.
         for (final episode in before.episodes) {
+          await journal.published(
+            api.config.apiOrigin,
+            slug,
+            episode.sourceUrl,
+          );
           await journal.forget(api.config.apiOrigin, slug, episode.sourceUrl);
         }
         final existing = {
@@ -184,8 +204,13 @@ class Engine {
             collection,
           );
         }
+        final positions = {
+          for (final (index, video) in snapshot.present.indexed)
+            video.id: index,
+        };
         final transfers = downloads.enqueue(slug, before.show.title, [
-          for (final video in additions) (id: video.id, title: video.title),
+          for (final video in additions)
+            (id: video.id, title: video.title, position: positions[video.id]!),
         ]);
         for (var i = 0; i < additions.length; i++)
           transfers[i].duration(additions[i].durationSeconds);
@@ -210,15 +235,34 @@ class Engine {
                   audioOnly: before.show.sourceKind == p.ShowSourceKind.audio,
                   transfer: transfer,
                 );
-                if (result is Published) added++;
+                if (result is Published) {
+                  added++;
+                  await journal.published(
+                    api.config.apiOrigin,
+                    slug,
+                    'https://www.youtube.com/watch?v=${video.id}',
+                  );
+                }
                 if (result is Skipped) {
                   skipped++;
                   transfer.skipped(result.reason);
+                  await journal.outcome(
+                    api.config.apiOrigin,
+                    slug,
+                    transfer.item,
+                  );
                 }
               } catch (error) {
                 taskError = error;
                 failures.add(error);
-                transfer.error(error);
+                if (error is! OperationCancelled) {
+                  transfer.error(error);
+                  await journal.outcome(
+                    api.config.apiOrigin,
+                    slug,
+                    transfer.item,
+                  );
+                }
               } finally {
                 active?.finish(taskError);
               }

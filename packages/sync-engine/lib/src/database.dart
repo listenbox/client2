@@ -6,6 +6,8 @@ import 'package:sqlite_async/native.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 import 'package:uuid/uuid.dart';
 
+import 'downloads.dart';
+
 /// The local journal owns resumable effects; the API owns published state.
 /// sqlite_async keeps its writer and reader pool off the application isolate.
 class Database {
@@ -28,7 +30,7 @@ class Database {
       await connection.writeTransaction((tx) async {
         final version =
             (await tx.get('PRAGMA user_version')).columnAt(0) as int;
-        if (version != 0 && version != 1) {
+        if (version != 0 && version != 2) {
           throw StateError('Unsupported sync journal version $version');
         }
         if (version == 0) {
@@ -59,9 +61,12 @@ CREATE TABLE download_ranges (
 CREATE TABLE source_items (
  origin TEXT NOT NULL, show_slug TEXT NOT NULL, collection_url TEXT NOT NULL,
  source_url TEXT NOT NULL, position INTEGER NOT NULL CHECK(position >= 0),
+ title TEXT NOT NULL, duration_seconds INTEGER,
+ phase TEXT NOT NULL CHECK(phase IN ('queued','complete','skipped','failed')),
+ reason TEXT, error TEXT,
  PRIMARY KEY(origin, show_slug, source_url)
 );
-PRAGMA user_version=1;
+PRAGMA user_version=2;
 ''');
         }
       });
@@ -84,19 +89,79 @@ PRAGMA user_version=1;
     String origin,
     String show,
     String collection,
-    List<String> urls,
-  ) => _connection.writeTransaction((tx) async {
-    await tx.execute(
-      'DELETE FROM source_items WHERE origin IS ? AND show_slug IS ?',
-      [origin, show],
-    );
-    for (var i = 0; i < urls.length; i++) {
+    List<({String url, String title, int? duration})> items, {
+    required bool canRemove,
+  }) => _connection.writeTransaction((tx) async {
+    if (canRemove) {
+      final present = items.map((item) => item.url).toSet();
+      final previous = await tx.getAll(
+        'SELECT source_url FROM source_items WHERE origin IS ? AND show_slug IS ?',
+        [origin, show],
+      );
+      for (final row in previous) {
+        if (!present.contains(row['source_url'])) {
+          await tx.execute(
+            'DELETE FROM source_items WHERE origin IS ? AND show_slug IS ? AND source_url IS ?',
+            [origin, show, row['source_url']],
+          );
+        }
+      }
+    }
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
       await tx.execute(
-        'INSERT INTO source_items VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
-        [origin, show, collection, urls[i], i],
+        '''INSERT INTO source_items (origin,show_slug,collection_url,source_url,position,title,duration_seconds,phase)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')
+        ON CONFLICT(origin,show_slug,source_url) DO UPDATE SET
+        position=excluded.position, title=excluded.title, duration_seconds=excluded.duration_seconds''',
+        [origin, show, collection, item.url, i, item.title, item.duration],
       );
     }
   });
+
+  Future<void> outcome(String origin, String show, Download item) =>
+      _connection.execute(
+        '''UPDATE source_items SET title=?, duration_seconds=?, phase=?, reason=?, error=?
+        WHERE origin IS ? AND show_slug IS ? AND source_url IS ?''',
+        [
+          item.title,
+          item.durationSeconds,
+          item.phase.name,
+          item.reason,
+          item.error,
+          origin,
+          show,
+          item.sourceUrl,
+        ],
+      );
+
+  Future<void> published(String origin, String show, String source) =>
+      _connection.execute(
+        "UPDATE source_items SET phase='complete', reason=NULL, error=NULL WHERE origin IS ? AND show_slug IS ? AND source_url IS ?",
+        [origin, show, source],
+      );
+
+  Future<List<Download>> items(String origin, String show) async {
+    final rows = await _connection.getAll(
+      "SELECT * FROM source_items WHERE origin IS ? AND show_slug IS ? ORDER BY position",
+      [origin, show],
+    );
+    return [
+      for (final row in rows)
+        Download(
+            id: '$show/${Uri.parse(row['source_url'] as String).queryParameters['v']}',
+            sourceId: show,
+            sourceTitle: show,
+            title: row['title'] as String,
+            sourceUrl: row['source_url'] as String,
+            position: row['position'] as int,
+          )
+          ..durationSeconds = row['duration_seconds'] as int?
+          ..phase = Phase.values.byName(row['phase'] as String)
+          ..reason = row['reason'] as String?
+          ..error = row['error'] as String?,
+    ];
+  }
 
   Future<String> operation(
     String origin,

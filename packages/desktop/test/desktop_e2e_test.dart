@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:listenbox_desktop/desktop_host.dart';
 import 'package:listenbox_desktop/main.dart';
@@ -12,12 +15,33 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 void main() {
-  _LoopbackTestBinding();
+  final binding = _LoopbackTestBinding();
+  setUpAll(() async {
+    if (Platform.environment['LISTENBOX_DESIGN_CAPTURE'] == null) return;
+    final family = Platform.isMacOS
+        ? '.SF NS Text'
+        : Platform.isWindows
+        ? 'Segoe UI'
+        : 'sans-serif';
+    final file = Platform.isMacOS
+        ? '/System/Library/Fonts/SFNS.ttf'
+        : Platform.isWindows
+        ? '${Platform.environment['WINDIR']}/Fonts/segoeui.ttf'
+        : '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    await (FontLoader(
+      family,
+    )..addFont(File(file).readAsBytes().then(ByteData.sublistView))).load();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
   testWidgets('workspace uses its real client and isolated profile', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 900);
     tester.view.devicePixelRatio = 1;
+    await binding.setSurfaceSize(const Size(1080, 900));
+    addTearDown(() => binding.setSurfaceSize(null));
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final service = (await tester.runAsync(_DesktopFixture.start))!;
@@ -173,6 +197,253 @@ void main() {
       await tester.runAsync(service.close);
     }
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'episode rows and durable issues in ${dark ? 'dark' : 'light'} appearance',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 1040);
+        tester.view.devicePixelRatio = 1;
+        await binding.setSurfaceSize(const Size(1080, 1040));
+        addTearDown(() => binding.setSurfaceSize(null));
+        tester.platformDispatcher.platformBrightnessTestValue = dark
+            ? Brightness.dark
+            : Brightness.light;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+        final service = (await tester.runAsync(_DesktopFixture.start))!;
+        const publishedVideo = 'abcdefghij1',
+            pendingVideo = 'abcdefghij2',
+            unavailableVideo = 'abcdefghij3';
+        const publishedSource =
+            'https://www.youtube.com/watch?v=$publishedVideo';
+        const unavailableSource =
+            'https://www.youtube.com/watch?v=$unavailableVideo';
+        const publishedTitle = 'Pendulum - Blood Sugar (Guitar Cover)';
+        const pendingTitle =
+            'Nine Inch Nails - The Hand That Feeds (Guitar Cover)';
+        const unavailableTitle = 'Pendulum - Self vs Self (Guitar Cover)';
+        service.episodeRows[service.firstSlug] = [
+          {
+            'id': 'ep_${service.firstTeam.substring(5)}',
+            'show_id': 'shw_${service.firstTeam.substring(5)}',
+            'title': publishedTitle,
+            'status': 'published',
+            'duration_seconds': 318,
+            'source_url': publishedSource,
+            'source_position': 0,
+          },
+        ];
+        await tester.runAsync(() async {
+          final journal = await Database.open(service.profile);
+          try {
+            await journal.snapshot(
+              service.client.config.apiOrigin,
+              service.firstSlug,
+              service.sourceUrl,
+              [
+                (url: publishedSource, title: publishedTitle, duration: 318),
+                (
+                  url: 'https://www.youtube.com/watch?v=$pendingVideo',
+                  title: pendingTitle,
+                  duration: 218,
+                ),
+                (
+                  url: unavailableSource,
+                  title: unavailableTitle,
+                  duration: 286,
+                ),
+              ],
+              canRemove: true,
+            );
+            await journal.published(
+              service.client.config.apiOrigin,
+              service.firstSlug,
+              publishedSource,
+            );
+            final unavailable =
+                Download(
+                    id: '${service.firstSlug}/$unavailableVideo',
+                    sourceId: service.firstSlug,
+                    sourceTitle: 'First playlist',
+                    title: unavailableTitle,
+                    sourceUrl: unavailableSource,
+                    position: 2,
+                  )
+                  ..phase = Phase.skipped
+                  ..reason = 'Video unavailable'
+                  ..durationSeconds = 286;
+            await journal.outcome(
+              service.client.config.apiOrigin,
+              service.firstSlug,
+              unavailable,
+            );
+          } finally {
+            await journal.close();
+          }
+        });
+        // The HTTP publication and production transfer projection intentionally
+        // overlap while the app refreshes: they must render as one identity.
+        final transfers = service.client.downloads.enqueue(
+          service.firstSlug,
+          'First playlist',
+          [
+            (id: publishedVideo, title: publishedTitle, position: 0),
+            (id: pendingVideo, title: pendingTitle, position: 1),
+          ],
+        );
+        transfers.first.phase(Phase.complete);
+        transfers.last.startDownload(3000000);
+        service.client.downloads
+            .enqueue(service.secondSlug, 'Second playlist', [
+              (id: 'abcdefghij4', title: 'Other podcast failure', position: 0),
+            ])
+            .single
+            .error(StateError('Other podcast failure'));
+        final boundary = GlobalKey();
+        var key = GlobalKey<DesktopWorkspaceState>();
+        final host = _HeadlessDesktopHost();
+        try {
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: boundary,
+              child: ListenboxDesktop(
+                key: key,
+                client: service.client,
+                host: host,
+              ),
+            ),
+          );
+          await tester.runAsync(() => key.currentState!.initialLoad!);
+          await tester.runAsync(
+            () => key.currentState!.episodesSettled!.future,
+          );
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(find.byKey(const Key('filter-episodes')));
+          await tester.pump();
+          expect(find.text(publishedTitle), findsOneWidget);
+          expect(find.text(pendingTitle), findsOneWidget);
+          expect(find.text('Published'), findsOneWidget);
+          expect(find.text('Downloading'), findsOneWidget);
+          expect(find.text(unavailableTitle), findsNothing);
+          expect(find.text('Other podcast failure'), findsNothing);
+          expect(find.text('Transfers'), findsNothing);
+          expect(
+            tester.getTopLeft(find.text(publishedTitle)).dy,
+            lessThan(tester.getTopLeft(find.text(pendingTitle)).dy),
+          );
+          await _capture(
+            tester,
+            boundary,
+            'episodes-${dark ? 'dark' : 'light'}',
+          );
+          await tester.tap(find.byKey(const Key('filter-not-imported')));
+          await tester.pumpAndSettle();
+          expect(find.text(unavailableTitle), findsOneWidget);
+          expect(find.text('Video unavailable'), findsOneWidget);
+          expect(find.text(publishedTitle), findsNothing);
+          String? opened;
+          key.currentState!.browserOpener = (url) async {
+            opened = url;
+          };
+          await tester.tap(find.text('Open on YouTube'));
+          expect(opened, unavailableSource);
+          await _capture(
+            tester,
+            boundary,
+            'not-imported-${dark ? 'dark' : 'light'}',
+          );
+          expect(tester.takeException(), isNull);
+
+          await binding.setSurfaceSize(const Size(840, 600));
+          tester.platformDispatcher.textScaleFactorTestValue = 1.25;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text('Open on YouTube'),
+            220,
+            scrollable: find.descendant(
+              of: find.byKey(const Key('workspace-content')),
+              matching: find.byType(Scrollable),
+            ),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          await _capture(
+            tester,
+            boundary,
+            'compact-not-imported-${dark ? 'dark' : 'light'}',
+          );
+          await tester.ensureVisible(find.byKey(const Key('filter-episodes')));
+          await tester.tap(find.byKey(const Key('filter-episodes')));
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text(pendingTitle),
+            220,
+            scrollable: find.descendant(
+              of: find.byKey(const Key('workspace-content')),
+              matching: find.byType(Scrollable),
+            ),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          await _capture(
+            tester,
+            boundary,
+            'compact-episodes-${dark ? 'dark' : 'light'}',
+          );
+
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+          await binding.setSurfaceSize(const Size(1080, 1040));
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          final config = service.client.config;
+          await tester.runAsync(service.client.close);
+          service.client = Client(config);
+          key = GlobalKey<DesktopWorkspaceState>();
+          await tester.pumpWidget(
+            ListenboxDesktop(key: key, client: service.client, host: host),
+          );
+          await tester.runAsync(() => key.currentState!.initialLoad!);
+          await tester.runAsync(
+            () => key.currentState!.episodesSettled!.future,
+          );
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(
+            find.byKey(const Key('filter-not-imported')),
+          );
+          await tester.tap(find.byKey(const Key('filter-not-imported')));
+          await tester.pumpAndSettle();
+          expect(find.text(unavailableTitle), findsOneWidget);
+          expect(find.text('Video unavailable'), findsOneWidget);
+          expect(service.unexpected, isEmpty);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.runAsync(service.close);
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    );
+  }
+}
+
+Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
+  final directory = Platform.environment['LISTENBOX_DESIGN_CAPTURE'];
+  if (directory == null) return;
+  final boundary =
+      key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final image = await boundary.toImage(pixelRatio: 1);
+  try {
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    await tester.runAsync(() async {
+      await Directory(directory).create(recursive: true);
+      await File('$directory/$name.png')
+          .writeAsBytes(bytes!.buffer.asUint8List());
+    });
+  } finally {
+    image.dispose();
+  }
 }
 
 class _LoopbackTestBinding extends LiveTestWidgetsFlutterBinding {
@@ -260,7 +531,8 @@ class _DesktopFixture {
   final requests = <String>[];
   final unexpected = <String>[];
   final artworkServed = Completer<void>();
-  late final Client client;
+  late Client client;
+  final episodeRows = <String, List<Map<String, Object>>>{};
   final sourceUrl = 'https://www.youtube.com/playlist?list=PLdesktopFixture';
   String get artworkUrl => 'http://localhost:${server.port}/artwork.png';
 
@@ -353,7 +625,8 @@ class _DesktopFixture {
       };
     } else if (route == 'GET /s/shows/$firstSlug/episodes' ||
         route == 'GET /s/shows/$secondSlug/episodes') {
-      response = {'episodes': <Object>[]};
+      final slug = request.uri.path.split('/')[3];
+      response = {'episodes': episodeRows[slug] ?? <Object>[]};
     } else {
       unexpected.add(route);
       request.response.statusCode = HttpStatus.notFound;
