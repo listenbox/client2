@@ -1693,6 +1693,8 @@ class EpisodeListItem implements PublicJsonValue {
   final UnixMillis? republishedAt;
   final ShowID showId;
   final NonEmptyString? slug;
+  final int? sourcePosition;
+  final String? sourceUrl;
   final EpisodeStatus status;
   final String? thumbnailUrl;
   final NonEmptyString title;
@@ -1706,6 +1708,8 @@ class EpisodeListItem implements PublicJsonValue {
     this.republishedAt,
     required this.showId,
     this.slug,
+    this.sourcePosition,
+    this.sourceUrl,
     required this.status,
     this.thumbnailUrl,
     required this.title,
@@ -1723,6 +1727,8 @@ class EpisodeListItem implements PublicJsonValue {
         "republished_at",
         "show_id",
         "slug",
+        "source_position",
+        "source_url",
         "status",
         "thumbnail_url",
         "title",
@@ -1750,6 +1756,12 @@ class EpisodeListItem implements PublicJsonValue {
     final slug = (map["slug"] == null
         ? null
         : decodeNonEmptyString(map["slug"]));
+    final sourcePosition = (map["source_position"] == null
+        ? null
+        : expectPublicInt(map["source_position"]));
+    final sourceUrl = (map["source_url"] == null
+        ? null
+        : expectPublicString(map["source_url"]));
     final status = EpisodeStatus.fromJson(requirePublicField(map, "status"));
     final thumbnailUrl = (map["thumbnail_url"] == null
         ? null
@@ -1767,6 +1779,8 @@ class EpisodeListItem implements PublicJsonValue {
       republishedAt: republishedAt,
       showId: showId,
       slug: slug,
+      sourcePosition: sourcePosition,
+      sourceUrl: sourceUrl,
       status: status,
       thumbnailUrl: thumbnailUrl,
       title: title,
@@ -1785,6 +1799,9 @@ class EpisodeListItem implements PublicJsonValue {
       "republished_at": encodePublicJson(republishedAt),
     "show_id": encodePublicJson(showId),
     if (slug != null) "slug": encodePublicJson(slug),
+    if (sourcePosition != null)
+      "source_position": encodePublicJson(sourcePosition),
+    if (sourceUrl != null) "source_url": encodePublicJson(sourceUrl),
     "status": encodePublicJson(status),
     if (thumbnailUrl != null) "thumbnail_url": encodePublicJson(thumbnailUrl),
     "title": encodePublicJson(title),

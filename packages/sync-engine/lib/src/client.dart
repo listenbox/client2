@@ -105,6 +105,9 @@ class Client {
     return value.toJson().cast<String, dynamic>();
   });
 
+  Future<List<Download>> syncItems(String slug, {CancellationToken? cancel}) =>
+      _run(cancel, (api) => _engine.items(api, slug));
+
   Future<void> login(
     FutureOr<void> Function(Uri) openBrowser, {
     CancellationToken? cancel,

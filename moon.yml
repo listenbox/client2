@@ -19,6 +19,7 @@ fileGroups:
     - .moon/**/*.yml
     - moon.yml
     - tool/**/*.dart
+    - design/**/*
     - packages/**/pubspec.yaml
     - packages/**/lib/**/*.dart
     - packages/**/bin/**/*.dart
