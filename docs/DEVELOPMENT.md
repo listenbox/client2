@@ -18,7 +18,7 @@ Clone with submodules, then resolve the committed workspace lockfile:
 ```sh
 git clone --recurse-submodules https://github.com/listenbox/client2.git
 cd client2
-dart tool/flutter.dart pub get --enforce-lockfile
+flutter pub get --enforce-lockfile
 ```
 
 Flutter desktop builds need their ordinary host toolchain: Xcode on macOS,
@@ -28,11 +28,11 @@ Visual Studio C++ desktop tools on Windows, or `clang`, `cmake`, `ninja-build`,
 it supplies `libasound.so.2` used by the Linux media library. A desktop session
 also needs a display server; the integrated Flutter tests run headlessly.
 
-Moon's desktop tasks use the selected Xcode or an explicit `DEVELOPER_DIR`.
-When macOS only selected Command Line Tools, they use the installed
-`/Applications/Xcode.app` for the Flutter process. For direct Flutter commands
-and IDE launches, select full Xcode under **Xcode Settings → Locations → Command
-Line Tools**, or set `DEVELOPER_DIR` to its `Contents/Developer` directory.
+Flutter commands, including Moon's desktop tasks and IDE launches, use the
+selected Xcode or an explicit `DEVELOPER_DIR`. On macOS, select full Xcode under
+**Xcode Settings → Locations → Command Line Tools**, or set `DEVELOPER_DIR` to
+its `Contents/Developer` directory. Command Line Tools alone cannot build the
+desktop app.
 
 On Windows ARM64, use a Flutter checkout at tag `3.47.5` and run its
 `bin/flutter.bat` once to bootstrap the native SDK. Check that `bin/dart.bat
@@ -93,13 +93,17 @@ assets need a full restart. In VS Code, select a desktop device and launch
 Saving a changed Dart file reloads it. That launch sets `LISTENBOX_CONFIG` to
 `config/dev.yaml` for the parent repository's local API and dashboard.
 
-Moon also starts an interactive Flutter session with that config. It resolves
-the frozen dependencies once, shows dependency output only on failure, and
-leaves hot reload to Flutter:
+Moon runs Flutter directly in an interactive session with that config. It
+resolves the frozen dependencies once, shows dependency output only on failure,
+and leaves hot reload and shutdown to Flutter:
 
 ```sh
 moon run desktop:dev
 ```
+
+Press `q` or Ctrl+C to stop the session and its desktop app. Flutter's `d`
+command deliberately detaches and leaves the app running; use the tray's
+**Quit Listenbox** command to exit a detached app.
 
 Closing the desktop window hides it to the tray and keeps the same Flutter
 engine and Dart client running. The tray has **Open Listenbox** and **Quit

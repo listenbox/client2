@@ -45,7 +45,7 @@ fileGroups:
     - '!**/dist/**'
 tasks:
   install:
-    command: dart tool/flutter.dart pub get --enforce-lockfile
+    command: flutter pub get --enforce-lockfile
     inputs: [pubspec.yaml, pubspec.lock, 'packages/*/pubspec.yaml']
     options:
       cache: false

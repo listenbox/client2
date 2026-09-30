@@ -10,7 +10,7 @@ tasks:
   dev:
     description: Start a standard Flutter session; r reloads, R restarts, and IDEs can attach.
     deps: [client:prerequisites]
-    command: dart ../../tool/flutter.dart run
+    command: flutter run
     args:
       - --no-pub
       - --device-id=$os
@@ -31,7 +31,7 @@ tasks:
   test-e2e:
     description: Exercise desktop flows headlessly with the real shared client and local HTTP fixtures.
     deps: [client:prerequisites]
-    command: dart ../../tool/flutter.dart test
+    command: flutter test
     args:
       - --no-pub
       - test/desktop_e2e_test.dart
